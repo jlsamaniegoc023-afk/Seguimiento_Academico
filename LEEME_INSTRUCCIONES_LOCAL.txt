@@ -1,0 +1,35 @@
+========================================================================
+¡CÓMO ABRIR EL PROYECTO SENA EN CUALQUIER COMPUTADOR SIN INSTALAR NADA!
+========================================================================
+
+Para tu comodidad, he configurado y compilado todo el proyecto en un único
+archivo portátil que funciona de forma local en cualquier computador y
+navegador sin necesidad de tener Node.js, instalar paquetes o configurar
+servidores.
+
+------------------------------------------------------------------------
+OPCIÓN 1: RÁPIDA Y PORTÁTIL (Recomendada para ver de inmediato)
+------------------------------------------------------------------------
+1. Extrae (descomprime) el archivo ZIP en tu computadora.
+2. Abre la carpeta extraída.
+3. Haz doble clic directamente sobre el archivo:
+   
+   👉  Dashboard.html
+
+4. ¡Listo! Se abrirá la aplicación completa con todos sus datos,
+   gráficos y el nuevo calendario/Gantt de cobertura listo para usar,
+   incluso sin conexión a internet.
+
+------------------------------------------------------------------------
+OPCIÓN 2: PARA DESARROLLADORES (Modificar el código fuente)
+------------------------------------------------------------------------
+Si deseas seguir modificando el código fuente e iniciar un servidor de
+desarrollo local:
+1. Abre una terminal en la carpeta raíz del proyecto.
+2. Instala las dependencias:
+   npm install
+3. Ejecuta el servidor de desarrollo:
+   npm run dev
+4. Para compilar una nueva versión portátil:
+   npm run build
+   (Esto actualizará el archivo 'dist/index.html' y podrás copiarlo)

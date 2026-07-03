@@ -1,0 +1,6 @@
+{
+  "name": "Seguimiento Académico SENA",
+  "description": "Sistema de seguimiento y análisis académico para fichas SENA, permitiendo analizar juicios, competencias, aprendices y candidatos a etapa productiva.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
