@@ -73,6 +73,7 @@ export type ViewType =
   | 'no-aprob' 
   | 'competencias' 
   | 'etapa-productiva' 
+  | 'seguimiento-ep'
   | 'programacion'
   | 'gestion-curricular'
   | 'indicadores';

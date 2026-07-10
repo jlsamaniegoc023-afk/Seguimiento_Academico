@@ -48,7 +48,7 @@ export default function CargarView({
     setDragOver(false);
     if (e.dataTransfer.files) {
       const allowed = (Array.from(e.dataTransfer.files) as File[]).filter(f => 
-        /\.(xlsx|xls|csv)$/i.test(f.name)
+        /\.(xlsx|xls)$/i.test(f.name)
       );
       addFiles(allowed);
     }
@@ -255,14 +255,14 @@ export default function CargarView({
           Arrastra archivos aquí o haz clic para seleccionar
         </h3>
         <p className="text-sm text-slate-500">
-          Puedes cargar múltiples fichas simultáneamente (.xlsx, .xls, .csv)
+          Puedes cargar múltiples fichas simultáneamente (.xlsx, .xls)
         </p>
         <input
           ref={fileInputRef}
           id="file-upload"
           type="file"
           multiple
-          accept=".xls,.xlsx,.csv"
+          accept=".xls,.xlsx"
           className="hidden"
           onChange={handleFileSelect}
         />

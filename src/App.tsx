@@ -17,6 +17,7 @@ import LoginView from './components/LoginView';
 import SENALogo from './components/SENALogo';
 import GestionCurricularView from './components/GestionCurricularView';
 import IndicadoresView from './components/IndicadoresView';
+import SeguimientoEPView from './components/SeguimientoEPView';
 
 import { 
   Upload, 
@@ -139,6 +140,7 @@ export default function App() {
     { id: 'no-aprob', label: 'No Aprobados', icon: AlertTriangle, disabled: rows.length === 0 },
     { id: 'competencias', label: 'Competencias', icon: Layers, disabled: rows.length === 0 },
     { id: 'etapa-productiva', label: 'Etapa Productiva', icon: GraduationCap, disabled: rows.length === 0 },
+    { id: 'seguimiento-ep', label: 'Seguimiento Etapa Productiva', icon: Activity },
     { id: 'programacion', label: 'Programación', icon: Calendar },
     { id: 'separator-section', label: 'Gestión & Calidad', icon: null, isSeparator: true },
     { id: 'gestion-curricular', label: 'Gestión Curricular', icon: BookOpen, disabled: rows.length === 0 },
@@ -339,6 +341,10 @@ export default function App() {
                 selectedFichaId={selectedFichaId}
                 setSelectedFichaId={setSelectedFichaId}
               />
+            )}
+
+            {activeTab === 'seguimiento-ep' && (
+              <SeguimientoEPView />
             )}
 
             {activeTab === 'programacion' && (
