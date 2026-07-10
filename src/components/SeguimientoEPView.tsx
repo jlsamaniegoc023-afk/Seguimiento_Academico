@@ -23,8 +23,11 @@ import {
   Check, 
   Filter, 
   Sparkles, 
-  Award 
+  Award,
+  Edit
 } from 'lucide-react';
+import { SofiaRow, FichaMeta } from '../types';
+import { computeAprendizStats } from '../utils';
 
 export interface SeguimientoEPRecord {
   documento: string;
@@ -48,7 +51,19 @@ export interface SeguimientoEPRecord {
   estadoCmpEp: string;
 }
 
-export default function SeguimientoEPView() {
+interface SeguimientoEPViewProps {
+  rows?: SofiaRow[];
+  fichas?: { [id: string]: FichaMeta };
+  selectedFichaId?: string;
+  setSelectedFichaId?: (id: string) => void;
+}
+
+export default function SeguimientoEPView({
+  rows = [],
+  fichas = {},
+  selectedFichaId = '',
+  setSelectedFichaId
+}: SeguimientoEPViewProps) {
   const [dragOver, setDragOver] = useState(false);
   const [query, setQuery] = useState('');
   const [filterAlternativa, setFilterAlternativa] = useState('');
@@ -57,8 +72,16 @@ export default function SeguimientoEPView() {
   const [currentPage, setCurrentPage] = useState(1);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [editingRecord, setEditingRecord] = useState<SeguimientoEPRecord | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Synchronize filterFicha with selectedFichaId prop when it changes
+  useEffect(() => {
+    if (selectedFichaId) {
+      setFilterFicha(selectedFichaId);
+    }
+  }, [selectedFichaId]);
 
   const [records, setRecords] = useState<SeguimientoEPRecord[]>(() => {
     try {
@@ -269,22 +292,95 @@ export default function SeguimientoEPView() {
     setTimeout(() => setCopiedId(null), 2000);
   };
 
+  // Merge SofiaPlus apprentices and uploaded stage tracking CSV records
+  const mergedRecords = useMemo(() => {
+    const apStats = computeAprendizStats(rows);
+    const recordsMap = new Map<string, SeguimientoEPRecord>();
+    records.forEach(r => {
+      const docNorm = r.documento.trim();
+      if (docNorm) {
+        recordsMap.set(docNorm, { ...r });
+      }
+    });
+
+    const mergedList: SeguimientoEPRecord[] = [];
+    
+    apStats.forEach(ap => {
+      const existing = recordsMap.get(ap.doc);
+      const fichaProg = fichas[ap.ficha]?.programa || '';
+      
+      if (existing) {
+        mergedList.push({
+          ...existing,
+          rapsAprobados: ap.ap,
+          rapsNoAprobados: ap.na,
+          rapsPorEvaluar: ap.pe,
+          rapsTotal: ap.total,
+          nombreCompleto: ap.nombre.toUpperCase(),
+          ficha: ap.ficha || existing.ficha,
+          programa: fichaProg || existing.programa || 'SENA'
+        });
+        recordsMap.delete(ap.doc);
+      } else {
+        mergedList.push({
+          documento: ap.doc,
+          nombreCompleto: ap.nombre.toUpperCase(),
+          genero: '—',
+          correo: '',
+          telefonos: [],
+          ficha: ap.ficha,
+          programa: fichaProg || 'Programa por Definir',
+          nivelFormacion: 'TECNÓLOGO',
+          alternativa: 'Por definir',
+          subtipo: '—',
+          fechaInicio: '',
+          fechaFin: '',
+          estado: 'Pendiente',
+          rapsAprobados: ap.ap,
+          rapsNoAprobados: ap.na,
+          rapsPorEvaluar: ap.pe,
+          rapsTotal: ap.total,
+          estadoRapEp: 'POR_EVALUAR',
+          estadoCmpEp: 'POR_EVALUAR'
+        });
+      }
+    });
+
+    recordsMap.forEach(r => {
+      mergedList.push(r);
+    });
+
+    return mergedList;
+  }, [records, rows, fichas]);
+
+  const handleSaveEdit = (updated: SeguimientoEPRecord) => {
+    const updatedRecords = [...records];
+    const idx = updatedRecords.findIndex(r => r.documento === updated.documento);
+    if (idx !== -1) {
+      updatedRecords[idx] = updated;
+    } else {
+      updatedRecords.push(updated);
+    }
+    saveRecords(updatedRecords, fileName || 'Base Integrada');
+    setEditingRecord(null);
+  };
+
   // Helper for unique values
   const uniqueAlternatives = useMemo(() => {
-    return Array.from(new Set(records.map(r => r.alternativa))).filter(Boolean).sort();
-  }, [records]);
+    return Array.from(new Set(mergedRecords.map(r => r.alternativa))).filter(Boolean).sort();
+  }, [mergedRecords]);
 
   const uniqueEstados = useMemo(() => {
-    return Array.from(new Set(records.map(r => r.estadoRapEp || r.estado))).filter(Boolean).sort();
-  }, [records]);
+    return Array.from(new Set(mergedRecords.map(r => r.estadoRapEp || r.estado))).filter(Boolean).sort();
+  }, [mergedRecords]);
 
   const uniqueFichasInCsv = useMemo(() => {
-    return Array.from(new Set(records.map(r => r.ficha))).filter(Boolean).sort();
-  }, [records]);
+    return Array.from(new Set(mergedRecords.map(r => r.ficha))).filter(Boolean).sort();
+  }, [mergedRecords]);
 
   // Filtering records
   const filteredRecords = useMemo(() => {
-    return records.filter(r => {
+    return mergedRecords.filter(r => {
       const matchQuery = !query.trim() || 
         r.nombreCompleto.toLowerCase().includes(query.toLowerCase()) ||
         r.documento.includes(query) ||
@@ -298,15 +394,15 @@ export default function SeguimientoEPView() {
 
       return matchQuery && matchAlt && matchEst && matchFic;
     });
-  }, [records, query, filterAlternativa, filterEstado, filterFicha]);
+  }, [mergedRecords, query, filterAlternativa, filterEstado, filterFicha]);
 
   // Statistics calculation
   const stats = useMemo(() => {
-    const total = records.length;
+    const total = mergedRecords.length;
     if (total === 0) return { total: 0, activeCount: 0, totalFichas: 0, topAlternative: '—', topAltCount: 0 };
 
     // active means estado contains 'ejecucion' / 'vigente' / 'activo' / 'aprobado'
-    const activeCount = records.filter(r => {
+    const activeCount = mergedRecords.filter(r => {
       const state = (r.estado || '').toUpperCase();
       const rapState = (r.estadoRapEp || '').toUpperCase();
       return state.includes('APROBADO') || 
@@ -322,11 +418,11 @@ export default function SeguimientoEPView() {
     }).length;
 
     // Fichas count
-    const totalFichas = new Set(records.map(r => r.ficha).filter(Boolean)).size;
+    const totalFichas = new Set(mergedRecords.map(r => r.ficha).filter(Boolean)).size;
 
     // Top alternative type
     const altCounts: { [key: string]: number } = {};
-    records.forEach(r => {
+    mergedRecords.forEach(r => {
       if (r.alternativa) {
         altCounts[r.alternativa] = (altCounts[r.alternativa] || 0) + 1;
       }
@@ -384,28 +480,30 @@ export default function SeguimientoEPView() {
           </div>
         </div>
 
-        {records.length > 0 && (
+        {mergedRecords.length > 0 && (
           <div className="flex items-center gap-2.5 self-end md:self-auto">
             <button
               onClick={() => fileInputRef.current?.click()}
               className="px-3.5 py-2 text-xs font-bold uppercase tracking-wider text-slate-600 hover:text-slate-800 bg-slate-50 hover:bg-slate-100 rounded-xl border border-slate-200 transition-all flex items-center gap-1.5 cursor-pointer"
             >
               <Upload className="w-4 h-4 text-slate-400" />
-              Reemplazar CSV
+              {records.length > 0 ? 'Reemplazar CSV' : 'Cargar CSV Seguimiento'}
             </button>
-            <button
-              onClick={() => setShowClearConfirm(true)}
-              className="px-3.5 py-2 text-xs font-bold uppercase tracking-wider text-red-600 hover:text-white bg-red-50 hover:bg-red-600 rounded-xl border border-red-100 hover:border-red-600 transition-all flex items-center gap-1.5 cursor-pointer"
-            >
-              <Trash2 className="w-4 h-4" />
-              Limpiar Datos
-            </button>
+            {records.length > 0 && (
+              <button
+                onClick={() => setShowClearConfirm(true)}
+                className="px-3.5 py-2 text-xs font-bold uppercase tracking-wider text-red-600 hover:text-white bg-red-50 hover:bg-red-600 rounded-xl border border-red-100 hover:border-red-600 transition-all flex items-center gap-1.5 cursor-pointer"
+              >
+                <Trash2 className="w-4 h-4" />
+                Limpiar Datos
+              </button>
+            )}
           </div>
         )}
       </div>
 
-      {/* CSV Import Zone (Rendered when no records loaded) */}
-      {records.length === 0 ? (
+      {/* CSV Import Zone (Rendered when no records loaded and no SofiaPlus rows exist) */}
+      {mergedRecords.length === 0 ? (
         <div 
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
@@ -461,14 +559,6 @@ export default function SeguimientoEPView() {
             </p>
           </div>
 
-          <input 
-            type="file"
-            ref={fileInputRef}
-            onChange={handleFileChange}
-            accept=".csv"
-            className="hidden"
-          />
-
           <button
             onClick={() => fileInputRef.current?.click()}
             className="mt-8 px-6 py-3 bg-sena hover:bg-[#329200] text-white rounded-xl text-xs font-black uppercase tracking-widest shadow-md hover:shadow-lg transition-all cursor-pointer flex items-center gap-2"
@@ -480,9 +570,9 @@ export default function SeguimientoEPView() {
       ) : (
         <>
           {/* File summary stats and badges */}
-          <div className="flex items-center justify-between text-xs font-bold text-slate-400 px-1 uppercase tracking-wider -mb-3">
-            <span>Archivo: <strong className="text-slate-700 font-black">{fileName}</strong></span>
-            <span>Total: <strong className="text-sena font-black">{filteredRecords.length}</strong> de {records.length} registros</span>
+          <div className="flex items-center justify-between text-xs font-bold text-slate-400 px-1 uppercase tracking-wider mb-4 mt-2">
+            <span>Archivo / Base: <strong className="text-slate-700 font-black">{fileName || 'Integrada con Aprendices'}</strong></span>
+            <span>Total: <strong className="text-sena font-black">{filteredRecords.length}</strong> de {mergedRecords.length} registros</span>
           </div>
 
           {/* Premium Dashboard summary stats (Bento-Grid) */}
@@ -681,6 +771,13 @@ export default function SeguimientoEPView() {
                         
                         <div className="flex items-center gap-1.5">
                           <button
+                            onClick={() => setEditingRecord(r)}
+                            className="bg-slate-50 hover:bg-emerald-50 border border-slate-200 hover:border-emerald-200 text-slate-500 hover:text-sena p-1.5 rounded-lg transition-all cursor-pointer flex items-center justify-center"
+                            title="Editar Seguimiento"
+                          >
+                            <Edit className="w-3.5 h-3.5" />
+                          </button>
+                          <button
                             onClick={() => copyToClipboard(r.documento, uniqueId)}
                             className="bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-500 hover:text-slate-700 p-1.5 rounded-lg transition-all cursor-pointer"
                             title="Copiar Documento"
@@ -706,6 +803,28 @@ export default function SeguimientoEPView() {
                         <p className="text-[10px] text-slate-500 font-bold uppercase truncate max-w-full" title={r.programa}>
                           📚 {r.programa || 'Programa sin registrar'}
                         </p>
+                      </div>
+
+                      {/* Academic Juicios Progress */}
+                      <div className="mt-3.5 p-3 bg-slate-50 rounded-2xl border border-slate-150 space-y-1.5">
+                        <p className="text-[9px] font-extrabold text-slate-400 uppercase tracking-widest flex items-center justify-between">
+                          <span>Juicios de Evaluación (Académico)</span>
+                          <span className="text-sena font-black">{r.rapsTotal > 0 ? Math.round((r.rapsAprobados / r.rapsTotal) * 100) : 0}%</span>
+                        </p>
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex gap-2.5 text-[11px] font-bold">
+                            <span className="text-emerald-600">AP: <strong className="font-extrabold">{r.rapsAprobados}</strong></span>
+                            <span className="text-red-500">NA: <strong className="font-extrabold">{r.rapsNoAprobados}</strong></span>
+                            <span className="text-amber-500">PE: <strong className="font-extrabold">{r.rapsPorEvaluar}</strong></span>
+                          </div>
+                          
+                          <div className="flex-1 max-w-[80px] h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                            <div 
+                              className="h-full bg-sena rounded-full" 
+                              style={{ width: `${r.rapsTotal > 0 ? Math.round((r.rapsAprobados / r.rapsTotal) * 100) : 0}%` }}
+                            />
+                          </div>
+                        </div>
                       </div>
 
                       {/* Timeline dates section */}
@@ -834,6 +953,147 @@ export default function SeguimientoEPView() {
                 Sí, Eliminar Todo
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Hidden file input for uploading CSV from header */}
+      <input 
+        type="file"
+        ref={fileInputRef}
+        onChange={handleFileChange}
+        accept=".csv"
+        className="hidden"
+      />
+
+      {/* Edit Record Modal */}
+      {editingRecord && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-fade-in">
+          <div className="bg-white rounded-[24px] border border-slate-200 max-w-lg w-full p-6 shadow-2xl space-y-6 animate-scale-up">
+            <div className="flex items-center justify-between border-b border-slate-150 pb-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-emerald-50 rounded-xl flex items-center justify-center border border-emerald-100 text-sena">
+                  <Edit className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-black uppercase tracking-tight text-slate-800">
+                    Editar Seguimiento EP
+                  </h3>
+                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                    {editingRecord.nombreCompleto} — Ficha {editingRecord.ficha}
+                  </p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setEditingRecord(null)}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg transition-all"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={(e) => {
+              e.preventDefault();
+              const formData = new FormData(e.currentTarget);
+              handleSaveEdit({
+                ...editingRecord,
+                alternativa: String(formData.get('alternativa')),
+                subtipo: String(formData.get('subtipo')), // Empresa
+                fechaInicio: String(formData.get('fechaInicio')),
+                fechaFin: String(formData.get('fechaFin')),
+                estado: String(formData.get('estado')),
+              });
+            }} className="space-y-4">
+              
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
+                  Alternativa Etapa Productiva
+                </label>
+                <select
+                  name="alternativa"
+                  defaultValue={editingRecord.alternativa || 'Por definir'}
+                  className="w-full bg-slate-50 border border-slate-200 hover:border-slate-300 focus:border-sena/50 rounded-xl px-3.5 py-2.5 text-xs font-bold outline-none transition-all text-slate-700 cursor-pointer"
+                >
+                  <option value="Por definir">Por definir</option>
+                  <option value="Contrato de Aprendizaje">Contrato de Aprendizaje</option>
+                  <option value="Vínculo Laboral">Vínculo Laboral</option>
+                  <option value="Proyecto Productivo">Proyecto Productivo</option>
+                  <option value="Pasantía">Pasantía</option>
+                  <option value="Monitoría">Monitoría</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
+                  Empresa / Ente Coformador
+                </label>
+                <input
+                  type="text"
+                  name="subtipo"
+                  defaultValue={editingRecord.subtipo === '—' ? '' : editingRecord.subtipo}
+                  placeholder="Nombre de la empresa o proyecto..."
+                  className="w-full bg-slate-50 border border-slate-200 hover:border-slate-300 focus:border-sena/50 rounded-xl px-3.5 py-2.5 text-xs font-bold outline-none transition-all text-slate-700"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
+                    Fecha Inicio EP
+                  </label>
+                  <input
+                    type="date"
+                    name="fechaInicio"
+                    defaultValue={editingRecord.fechaInicio ? editingRecord.fechaInicio.split(' ')[0] : ''}
+                    className="w-full bg-slate-50 border border-slate-200 hover:border-slate-300 focus:border-sena/50 rounded-xl px-3.5 py-2.5 text-xs font-bold outline-none transition-all text-slate-700"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
+                    Fecha Fin EP
+                  </label>
+                  <input
+                    type="date"
+                    name="fechaFin"
+                    defaultValue={editingRecord.fechaFin ? editingRecord.fechaFin.split(' ')[0] : ''}
+                    className="w-full bg-slate-50 border border-slate-200 hover:border-slate-300 focus:border-sena/50 rounded-xl px-3.5 py-2.5 text-xs font-bold outline-none transition-all text-slate-700"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
+                  Estado Alternativa
+                </label>
+                <select
+                  name="estado"
+                  defaultValue={editingRecord.estado || 'Pendiente'}
+                  className="w-full bg-slate-50 border border-slate-200 hover:border-slate-300 focus:border-sena/50 rounded-xl px-3.5 py-2.5 text-xs font-bold outline-none transition-all text-slate-700 cursor-pointer"
+                >
+                  <option value="Pendiente">Pendiente</option>
+                  <option value="En Ejecución">En Ejecución</option>
+                  <option value="Aprobado">Aprobado</option>
+                  <option value="Por evaluar">Por evaluar</option>
+                  <option value="Terminado">Terminado</option>
+                </select>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-150">
+                <button
+                  type="button"
+                  onClick={() => setEditingRecord(null)}
+                  className="px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest text-slate-500 hover:text-slate-700 bg-slate-50 hover:bg-slate-100 border border-slate-200 transition-all cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest text-white bg-sena hover:bg-sena-dark transition-all cursor-pointer shadow-md hover:shadow-lg"
+                >
+                  Guardar Cambios
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

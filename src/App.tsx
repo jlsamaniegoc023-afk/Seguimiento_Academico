@@ -344,7 +344,12 @@ export default function App() {
             )}
 
             {activeTab === 'seguimiento-ep' && (
-              <SeguimientoEPView />
+              <SeguimientoEPView 
+                rows={rows}
+                fichas={fichas}
+                selectedFichaId={selectedFichaId}
+                setSelectedFichaId={setSelectedFichaId}
+              />
             )}
 
             {activeTab === 'programacion' && (
