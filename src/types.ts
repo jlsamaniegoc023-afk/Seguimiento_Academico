@@ -75,5 +75,6 @@ export type ViewType =
   | 'etapa-productiva' 
   | 'seguimiento-ep'
   | 'programacion'
+  | 'horas-reportadas'
   | 'gestion-curricular'
   | 'indicadores';

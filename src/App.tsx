@@ -18,6 +18,7 @@ import SENALogo from './components/SENALogo';
 import GestionCurricularView from './components/GestionCurricularView';
 import IndicadoresView from './components/IndicadoresView';
 import SeguimientoEPView from './components/SeguimientoEPView';
+import HorasReportadasView from './components/HorasReportadasView';
 
 import { 
   Upload, 
@@ -33,7 +34,8 @@ import {
   Layers,
   LogOut,
   BookOpen,
-  BarChart3
+  BarChart3,
+  Clock
 } from 'lucide-react';
 
 export default function App() {
@@ -143,6 +145,7 @@ export default function App() {
     { id: 'seguimiento-ep', label: 'Seguimiento Etapa Productiva', icon: Activity },
     { id: 'programacion', label: 'Programación', icon: Calendar },
     { id: 'separator-section', label: 'Gestión & Calidad', icon: null, isSeparator: true },
+    { id: 'horas-reportadas', label: 'Horas Reportadas Instructor', icon: Clock },
     { id: 'gestion-curricular', label: 'Gestión Curricular', icon: BookOpen, disabled: rows.length === 0 },
     { id: 'indicadores', label: 'Indicadores de Gestión', icon: BarChart3, disabled: rows.length === 0 }
   ];
@@ -359,6 +362,16 @@ export default function App() {
                 rows={rows}
                 fichas={fichas}
                 showLoading={showLoading}
+                selectedFichaId={selectedFichaId}
+                setSelectedFichaId={setSelectedFichaId}
+              />
+            )}
+
+            {activeTab === 'horas-reportadas' && (
+              <HorasReportadasView
+                programacion={programacion}
+                rows={rows}
+                fichas={fichas}
                 selectedFichaId={selectedFichaId}
                 setSelectedFichaId={setSelectedFichaId}
               />

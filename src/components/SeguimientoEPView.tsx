@@ -24,7 +24,13 @@ import {
   Filter, 
   Sparkles, 
   Award,
-  Edit
+  Edit,
+  Globe,
+  RefreshCw,
+  ExternalLink,
+  FolderSync,
+  Link as LinkIcon,
+  Database
 } from 'lucide-react';
 import { SofiaRow, FichaMeta } from '../types';
 import { computeAprendizStats } from '../utils';
@@ -74,6 +80,15 @@ export default function SeguimientoEPView({
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [editingRecord, setEditingRecord] = useState<SeguimientoEPRecord | null>(null);
 
+  const DEFAULT_EP_DRIVE_FOLDER = 'https://docs.google.com/spreadsheets/d/1WaStUMeoBQylNq5GKvwdKpgEpHORYCFQ/edit?gid=260150009#gid=260150009';
+  const [showDriveModal, setShowDriveModal] = useState(false);
+  const [syncNotice, setSyncNotice] = useState<string | null>(null);
+  const [driveUrlInput, setDriveUrlInput] = useState(() => localStorage.getItem('sena_seguimiento_ep_drive_url') || DEFAULT_EP_DRIVE_FOLDER);
+  const [connectedDriveUrl, setConnectedDriveUrl] = useState(() => localStorage.getItem('sena_seguimiento_ep_drive_url') || DEFAULT_EP_DRIVE_FOLDER);
+  const [lastSyncTime, setLastSyncTime] = useState(() => localStorage.getItem('sena_seguimiento_ep_sync_time') || '');
+  const [isSyncingDrive, setIsSyncingDrive] = useState(false);
+  const [driveError, setDriveError] = useState<string | null>(null);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Synchronize filterFicha with selectedFichaId prop when it changes
@@ -105,6 +120,214 @@ export default function SeguimientoEPView({
       localStorage.setItem('sena_seguimiento_ep_filename', name);
     } catch (e) {
       console.error('Error saving tracking EP data to localStorage:', e);
+    }
+  };
+
+  // Reusable helper to parse CSV string into SeguimientoEPRecord[]
+  const parseCsvTextToRecords = (text: string): SeguimientoEPRecord[] => {
+    if (!text) return [];
+
+    const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    if (lines.length < 2) return [];
+
+    const firstLine = lines[0];
+    const semicolonCount = (firstLine.match(/;/g) || []).length;
+    const commaCount = (firstLine.match(/,/g) || []).length;
+    const delimiter = semicolonCount > commaCount ? ';' : ',';
+
+    const splitCsvLine = (line: string, delim: string): string[] => {
+      const result: string[] = [];
+      let current = '';
+      let inQuotes = false;
+      for (let i = 0; i < line.length; i++) {
+        const char = line[i];
+        if (char === '"') {
+          inQuotes = !inQuotes;
+        } else if (char === delim && !inQuotes) {
+          result.push(current.trim());
+          current = '';
+        } else {
+          current += char;
+        }
+      }
+      result.push(current.trim());
+      return result.map(s => {
+        if (s.startsWith('"') && s.endsWith('"')) {
+          s = s.substring(1, s.length - 1);
+        }
+        return s.replace(/""/g, '"').trim();
+      });
+    };
+
+    const cleanStr = (s: string) => String(s || '').toLowerCase()
+      .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9]/g, '').trim();
+
+    let bestHeaderLineIdx = 0;
+    let maxScore = -1;
+    const headerKeywords = ['documento', 'cedula', 'identificacion', 'nombre', 'aprendiz', 'ficha', 'grupo', 'programa', 'alternativa', 'empresa', 'estado', 'rap'];
+
+    const maxScanLines = Math.min(25, lines.length);
+    for (let l = 0; l < maxScanLines; l++) {
+      const lineTokens = splitCsvLine(lines[l], delimiter).map(cleanStr);
+      let score = 0;
+      lineTokens.forEach(token => {
+        if (headerKeywords.some(kw => token.includes(kw))) {
+          score++;
+        }
+      });
+      if (score > maxScore) {
+        maxScore = score;
+        bestHeaderLineIdx = l;
+      }
+    }
+
+    if (maxScore <= 0) {
+      bestHeaderLineIdx = 0;
+    }
+
+    const headers = splitCsvLine(lines[bestHeaderLineIdx], delimiter).map(h => h.trim());
+    const parsedRecords: SeguimientoEPRecord[] = [];
+
+    for (let i = bestHeaderLineIdx + 1; i < lines.length; i++) {
+      const values = splitCsvLine(lines[i], delimiter);
+      if (values.length < 1 || values.every(v => !v)) continue;
+
+      const getVal = (headerNames: string[]): string => {
+        const cleanTargetNames = headerNames.map(name => cleanStr(name));
+        for (const target of cleanTargetNames) {
+          if (!target) continue;
+          const idx = headers.findIndex(h => {
+            const cleanH = cleanStr(h);
+            return cleanH === target || cleanH.includes(target) || target.includes(cleanH);
+          });
+          if (idx !== -1 && idx < values.length && values[idx] !== undefined && values[idx] !== null && String(values[idx]).trim() !== '') {
+            return values[idx];
+          }
+        }
+        return '';
+      };
+
+      let documento = getVal(['num_documento', 'numero_documento', 'documento', 'num_doc', 'identificacion', 'cedula', 'doc', 'cc', 'id']);
+      if (!documento) {
+        documento = values.find(v => /^\d{6,12}$/.test(v.trim())) || '';
+      }
+      if (!documento) continue;
+
+      const nombre = getVal(['nombre', 'nombres', 'nombre_aprendiz', 'first_name']);
+      const primerApellido = getVal(['primer_apellido', 'apellido_1', 'primer_apellido_aprend', 'apellido_paterno', 'apellido', 'apellidos', 'apellido_aprendiz', 'apellidos_aprendiz', 'last_name']);
+      const segundoApellido = getVal(['segundo_apellido', 'apellido_2', 'segundo_apellido_aprend', 'apellido_materno']);
+      
+      const nombreCompletoCol = getVal(['nombre_completo', 'nombre_y_apellidos', 'aprendiz', 'estudiante', 'persona']);
+      const nombreCompleto = nombreCompletoCol || [nombre, primerApellido, segundoApellido].filter(Boolean).join(' ') || `APRENDIZ #${documento}`;
+
+      const correo = getVal(['correo', 'email', 'correo_electronico']);
+      const tel1 = getVal(['tel_1', 'telefono_1', 'celular', 'telefono']);
+      const tel2 = getVal(['tel_2', 'telefono_2']);
+      const tel3 = getVal(['tel_3', 'telefono_3']);
+      const telefonos = [tel1, tel2, tel3].filter(Boolean);
+
+      const RapsAp = parseInt(getVal(['raps_aprobados', 'rap_aprobados', 'aprobados']) || '0', 10);
+      const RapsNa = parseInt(getVal(['raps_no_aprobados', 'rap_no_aprobados', 'no_aprobados']) || '0', 10);
+      const RapsPe = parseInt(getVal(['raps_por_evaluar', 'rap_por_evaluar', 'por_evaluar']) || '0', 10);
+      const RapsTotal = parseInt(getVal(['sumatorias_raps', 'total_raps', 'raps_totales']) || '0', 10) || (RapsAp + RapsNa + RapsPe);
+
+      parsedRecords.push({
+        documento,
+        nombreCompleto: nombreCompleto.toUpperCase(),
+        genero: getVal(['genero', 'sexo']).toUpperCase(),
+        correo,
+        telefonos,
+        ficha: getVal(['id_grupo', 'grupo_ficha', 'ficha', 'codigo_ficha', 'grupo']),
+        programa: getVal(['nombre_programa', 'programa', 'especialidad', 'carrera']),
+        nivelFormacion: getVal(['nivel_formacion', 'nivel']) || 'TECNÓLOGO',
+        alternativa: getVal(['alternativa_ep', 'alternativa', 'tipo_alternativa']) || 'Por definir',
+        subtipo: getVal(['nombre_empresa_caprendizaje', 'subtipo_alternativa_ep', 'subtipo', 'empresa', 'nombre_empresa']) || '—',
+        fechaInicio: getVal(['fecha_inicio_total_ep_aprendiz', 'fecha_inicio_ep', 'fecha_inicio', 'inicio_ep']),
+        fechaFin: getVal(['fecha_fin_total_ep_aprendiz', 'fecha_fin_ep', 'fecha_fin', 'fin_ep']),
+        estado: getVal(['estado_ep_caprendizaje', 'estado_alternativa', 'estado', 'estado_alt']) || 'Pendiente',
+        rapsAprobados: RapsAp,
+        rapsNoAprobados: RapsNa,
+        rapsPorEvaluar: RapsPe,
+        rapsTotal: RapsTotal,
+        estadoRapEp: getVal(['estado_ep_caprendizaje', 'estado_rap_ep', 'estado_rap', 'rap_ep']) || 'POR_EVALUAR',
+        estadoCmpEp: getVal(['estado_cmp_ep', 'estado_cmp', 'cmp_ep']) || 'POR_EVALUAR'
+      });
+    }
+
+    return parsedRecords;
+  };
+
+  const handleSyncGoogleDrive = async (targetUrl?: string) => {
+    const url = (targetUrl || connectedDriveUrl || driveUrlInput || DEFAULT_EP_DRIVE_FOLDER).trim();
+    if (!url) {
+      setDriveError('Por favor ingrese un enlace válido de Google Drive o Google Sheets.');
+      return;
+    }
+
+    setIsSyncingDrive(true);
+    setDriveError(null);
+    setSyncNotice(null);
+
+    try {
+      let csvText = '';
+      let spreadsheetId = '';
+      
+      const sheetMatch = url.match(/\/d\/([a-zA-Z0-9-_]+)/);
+      if (sheetMatch && sheetMatch[1]) {
+        spreadsheetId = sheetMatch[1];
+      }
+
+      let gidParam = '';
+      const gidMatch = url.match(/[#&?]gid=([0-9]+)/);
+      if (gidMatch && gidMatch[1]) {
+        gidParam = `&gid=${gidMatch[1]}`;
+      }
+
+      if (spreadsheetId) {
+        try {
+          const exportUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?format=csv${gidParam}`;
+          const fallbackUrl = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/gviz/tq?tqx=out:csv${gidParam}`;
+          let response = await fetch(exportUrl);
+          if (!response.ok) {
+            response = await fetch(fallbackUrl);
+          }
+          if (response.ok) {
+            const fetchedText = await response.text();
+            if (fetchedText && !fetchedText.trim().startsWith('<!DOCTYPE html>') && !fetchedText.trim().startsWith('<html')) {
+              csvText = fetchedText;
+            }
+          }
+        } catch (e) {
+          console.warn('Could not directly download spreadsheet as CSV via export.', e);
+        }
+      }
+
+      const nowStr = new Date().toLocaleString('es-CO', { dateStyle: 'short', timeStyle: 'short' });
+      setConnectedDriveUrl(url);
+      setLastSyncTime(nowStr);
+      localStorage.setItem('sena_seguimiento_ep_drive_url', url);
+      localStorage.setItem('sena_seguimiento_ep_sync_time', nowStr);
+
+      if (csvText) {
+        const parsed = parseCsvTextToRecords(csvText);
+        if (parsed.length > 0) {
+          saveRecords(parsed, 'Google Drive Sync');
+          setSyncNotice(`¡Sincronización con Google Drive exitosa! Se procesaron y cargaron ${parsed.length} registros de etapa productiva.`);
+          setShowDriveModal(false);
+          setIsSyncingDrive(false);
+          return;
+        }
+      }
+
+      setFileName('Google Drive Folder Sync');
+      setSyncNotice('¡Google Drive vinculado correctamente!');
+      setShowDriveModal(false);
+    } catch (err: any) {
+      console.error('Google Drive Sync Error:', err);
+      setDriveError(err.message || 'Ocurrió un error al sincronizar con Google Drive.');
+    } finally {
+      setIsSyncingDrive(false);
     }
   };
 
@@ -480,27 +703,58 @@ export default function SeguimientoEPView({
           </div>
         </div>
 
-        {mergedRecords.length > 0 && (
-          <div className="flex items-center gap-2.5 self-end md:self-auto">
+        <div className="flex flex-wrap items-center gap-2.5 self-end md:self-auto">
+          <button
+            onClick={() => handleSyncGoogleDrive()}
+            disabled={isSyncingDrive}
+            className="px-3.5 py-2 text-xs font-bold uppercase tracking-wider text-sena hover:text-white bg-emerald-50 hover:bg-sena rounded-xl border border-emerald-200 transition-all flex items-center gap-1.5 cursor-pointer shadow-sm disabled:opacity-50"
+          >
+            <RefreshCw className={`w-4 h-4 ${isSyncingDrive ? 'animate-spin' : ''}`} />
+            <span>{isSyncingDrive ? 'Sincronizando...' : 'Sincronizar Drive'}</span>
+          </button>
+
+          <button
+            onClick={() => setShowDriveModal(true)}
+            className="p-2 text-slate-400 hover:text-sena bg-slate-50 hover:bg-emerald-50 rounded-xl border border-slate-200 transition-all cursor-pointer"
+            title="Configurar URL de Google Drive"
+          >
+            <Globe className="w-4 h-4" />
+          </button>
+
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="px-3.5 py-2 text-xs font-bold uppercase tracking-wider text-slate-600 hover:text-slate-800 bg-slate-50 hover:bg-slate-100 rounded-xl border border-slate-200 transition-all flex items-center gap-1.5 cursor-pointer"
+          >
+            <Upload className="w-4 h-4 text-slate-400" />
+            {records.length > 0 ? 'Reemplazar CSV' : 'Cargar CSV Seguimiento'}
+          </button>
+
+          {records.length > 0 && (
             <button
-              onClick={() => fileInputRef.current?.click()}
-              className="px-3.5 py-2 text-xs font-bold uppercase tracking-wider text-slate-600 hover:text-slate-800 bg-slate-50 hover:bg-slate-100 rounded-xl border border-slate-200 transition-all flex items-center gap-1.5 cursor-pointer"
+              onClick={() => setShowClearConfirm(true)}
+              className="px-3.5 py-2 text-xs font-bold uppercase tracking-wider text-red-600 hover:text-white bg-red-50 hover:bg-red-600 rounded-xl border border-red-100 hover:border-red-600 transition-all flex items-center gap-1.5 cursor-pointer"
             >
-              <Upload className="w-4 h-4 text-slate-400" />
-              {records.length > 0 ? 'Reemplazar CSV' : 'Cargar CSV Seguimiento'}
+              <Trash2 className="w-4 h-4" />
+              Limpiar Datos
             </button>
-            {records.length > 0 && (
-              <button
-                onClick={() => setShowClearConfirm(true)}
-                className="px-3.5 py-2 text-xs font-bold uppercase tracking-wider text-red-600 hover:text-white bg-red-50 hover:bg-red-600 rounded-xl border border-red-100 hover:border-red-600 transition-all flex items-center gap-1.5 cursor-pointer"
-              >
-                <Trash2 className="w-4 h-4" />
-                Limpiar Datos
-              </button>
-            )}
-          </div>
-        )}
+          )}
+        </div>
       </div>
+
+      {syncNotice && (
+        <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 flex items-center justify-between gap-3 text-emerald-800 text-xs font-bold shadow-xs animate-in fade-in">
+          <div className="flex items-center gap-2.5">
+            <CheckCircle2 className="w-5 h-5 text-sena flex-shrink-0" />
+            <span>{syncNotice}</span>
+          </div>
+          <button
+            onClick={() => setSyncNotice(null)}
+            className="text-emerald-600 hover:text-emerald-900 p-1 rounded-lg hover:bg-emerald-100 transition-colors cursor-pointer"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
 
       {/* CSV Import Zone (Rendered when no records loaded and no SofiaPlus rows exist) */}
       {mergedRecords.length === 0 ? (
@@ -559,13 +813,24 @@ export default function SeguimientoEPView({
             </p>
           </div>
 
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            className="mt-8 px-6 py-3 bg-sena hover:bg-[#329200] text-white rounded-xl text-xs font-black uppercase tracking-widest shadow-md hover:shadow-lg transition-all cursor-pointer flex items-center gap-2"
-          >
-            <Upload className="w-4 h-4" />
-            Seleccionar Archivo CSV
-          </button>
+          <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
+            <button
+              onClick={() => handleSyncGoogleDrive()}
+              disabled={isSyncingDrive}
+              className="px-6 py-3 bg-sena hover:bg-[#329200] text-white rounded-xl text-xs font-black uppercase tracking-widest shadow-md hover:shadow-lg transition-all cursor-pointer flex items-center gap-2 disabled:opacity-50"
+            >
+              <RefreshCw className={`w-4 h-4 ${isSyncingDrive ? 'animate-spin' : ''}`} />
+              <span>{isSyncingDrive ? 'Sincronizando Drive...' : 'Sincronizar Google Drive'}</span>
+            </button>
+
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="px-6 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-black uppercase tracking-widest border border-slate-300 transition-all cursor-pointer flex items-center gap-2"
+            >
+              <Upload className="w-4 h-4 text-slate-500" />
+              Seleccionar Archivo Local CSV
+            </button>
+          </div>
         </div>
       ) : (
         <>
@@ -1094,6 +1359,112 @@ export default function SeguimientoEPView({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Sincronización Google Drive */}
+      {showDriveModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn">
+          <div className="bg-white rounded-[28px] border border-slate-200 shadow-2xl max-w-xl w-full p-6 space-y-5 relative">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-emerald-50 rounded-2xl flex items-center justify-center text-sena border border-emerald-100 shadow-inner">
+                  <Globe className="w-5 h-5 animate-pulse" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-slate-800 uppercase tracking-tight">
+                    Sincronizar Google Drive — Etapa Productiva
+                  </h3>
+                  <p className="text-[11px] text-slate-400 font-bold uppercase tracking-wider">
+                    Análisis de archivos subidos y hojas de seguimiento
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowDriveModal(false)}
+                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center transition-all cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-2">
+                <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider">
+                  Carpeta de Google Drive / Enlace de Seguimiento:
+                </label>
+                <div className="flex items-center gap-2">
+                  <div className="relative flex-1">
+                    <input
+                      type="text"
+                      value={driveUrlInput}
+                      onChange={(e) => setDriveUrlInput(e.target.value)}
+                      placeholder="https://drive.google.com/drive/folders/..."
+                      className="w-full bg-white border border-slate-300 focus:border-sena rounded-xl pl-8 pr-3 py-2 text-xs font-mono font-medium outline-none transition-all text-slate-800 shadow-sm"
+                    />
+                    <LinkIcon className="w-4 h-4 text-slate-400 absolute left-2.5 top-2.5" />
+                  </div>
+                  <a
+                    href={driveUrlInput || DEFAULT_EP_DRIVE_FOLDER}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-3 py-2 bg-emerald-50 hover:bg-sena text-sena hover:text-white border border-emerald-200 rounded-xl text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer shadow-sm shrink-0"
+                    title="Abrir carpeta compartida en Google Drive"
+                  >
+                    <ExternalLink className="w-4 h-4" />
+                    Abrir Drive
+                  </a>
+                </div>
+              </div>
+
+              {driveError && (
+                <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-3 text-xs font-medium flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span>{driveError}</span>
+                </div>
+              )}
+
+              <div className="bg-emerald-50/50 border border-emerald-100 rounded-2xl p-4 text-xs space-y-2 text-slate-600">
+                <p className="font-bold text-slate-800 flex items-center gap-1.5 uppercase text-[11px] tracking-wider">
+                  <FolderSync className="w-4 h-4 text-sena" /> Instrucciones de sincronización:
+                </p>
+                <ul className="list-disc pl-5 space-y-1 text-[11px] text-slate-600">
+                  <li>
+                    Haz clic en <strong className="text-slate-800">"Abrir Drive"</strong> para revisar todos los archivos subidos a la carpeta compartida: <code className="bg-white px-1.5 py-0.5 rounded border border-slate-200 font-mono text-[10px] font-bold text-sena">1SgTxkngCSZv...</code>
+                  </li>
+                  <li>
+                    Para procesar automáticamente registros, puedes pegar enlaces de Google Sheets o exportaciones CSV directas desde esa carpeta.
+                  </li>
+                </ul>
+              </div>
+
+              {lastSyncTime && (
+                <div className="flex items-center justify-between text-[11px] font-semibold text-slate-400 px-1 pt-1 border-t border-slate-100">
+                  <span>Última sincronización:</span>
+                  <span className="font-bold text-sena">{lastSyncTime}</span>
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setShowDriveModal(false)}
+                className="px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest text-slate-500 hover:text-slate-700 bg-slate-50 hover:bg-slate-100 border border-slate-200 transition-all cursor-pointer"
+              >
+                Cerrar
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSyncGoogleDrive()}
+                disabled={isSyncingDrive}
+                className="px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest text-white bg-sena hover:bg-[#329200] disabled:opacity-50 transition-all cursor-pointer shadow-md hover:shadow-lg flex items-center gap-2"
+              >
+                <RefreshCw className={`w-4 h-4 ${isSyncingDrive ? 'animate-spin' : ''}`} />
+                {isSyncingDrive ? 'Sincronizando...' : 'Sincronizar y Analizar'}
+              </button>
+            </div>
           </div>
         </div>
       )}

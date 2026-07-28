@@ -20,7 +20,13 @@ import {
   Search,
   ChevronDown,
   ChevronUp,
-  Filter
+  Filter,
+  Award,
+  GraduationCap,
+  XCircle,
+  UserMinus,
+  UserCheck,
+  CheckCircle2
 } from 'lucide-react';
 
 interface DashboardViewProps {
@@ -80,6 +86,49 @@ export default function DashboardView({
   const enFormacion = aprs.filter(a => a.estado.includes('FORMACION')).length;
   const aplazado = aprs.filter(a => a.estado.includes('APLAZ')).length;
   const otros = aprs.length - enFormacion - aplazado;
+
+  // Consolidado de Estado de Aprendiz calculation
+  const estadoAprendizCounts = React.useMemo(() => {
+    let certificado = 0;
+    let porCertificar = 0;
+    let enFormacion = 0;
+    let aplazado = 0;
+    let cancelado = 0;
+    let retiroVoluntario = 0;
+    let otros = 0;
+
+    aprs.forEach(a => {
+      const e = (a.estado || '').toUpperCase().trim();
+      if (e.includes('POR CERTIFICAR') || e.includes('POR_CERTIFICAR')) {
+        porCertificar++;
+      } else if (e.includes('CERTIFICAD')) {
+        certificado++;
+      } else if (e.includes('FORMAC')) {
+        enFormacion++;
+      } else if (e.includes('APLAZAD')) {
+        aplazado++;
+      } else if (e.includes('CANCELAD')) {
+        cancelado++;
+      } else if (e.includes('RETIRO') || e.includes('VOLUNTARIO')) {
+        retiroVoluntario++;
+      } else {
+        otros++;
+      }
+    });
+
+    const total = aprs.length;
+
+    return {
+      certificado,
+      porCertificar,
+      enFormacion,
+      aplazado,
+      cancelado,
+      retiroVoluntario,
+      otros,
+      total
+    };
+  }, [aprs]);
   
   const efficiency = displayedRows.length > 0 ? Math.round((ap / displayedRows.length) * 100) : 0;
   
@@ -294,6 +343,117 @@ export default function DashboardView({
             </div>
             <div className="w-10 h-10 bg-red-50 rounded-xl flex items-center justify-center text-red-500">
               <AlertTriangle className="w-5 h-5" />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Consolidado de Estado de Aprendiz */}
+      <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 bg-emerald-50 rounded-xl flex items-center justify-center text-sena border border-emerald-100">
+              <UserCheck className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-sm font-black text-slate-800 uppercase tracking-tight">
+                Consolidado de Estado de Aprendiz
+              </h3>
+              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                {selectedFichaId ? `Ficha ${selectedFichaId} — Total: ${estadoAprendizCounts.total} aprendices` : `Total Fichas — Total: ${estadoAprendizCounts.total} aprendices`}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="bg-slate-100 border border-slate-200 text-slate-700 text-[10px] font-black uppercase px-3 py-1 rounded-full">
+              Matrícula Total: {estadoAprendizCounts.total}
+            </span>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+          {/* Certificado */}
+          <div className="bg-emerald-50/60 border border-emerald-200/80 rounded-2xl p-3.5 flex flex-col justify-between hover:shadow-md transition-all">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-black uppercase text-sena tracking-wider">Certificado</span>
+              <Award className="w-4 h-4 text-sena" />
+            </div>
+            <div className="mt-2">
+              <div className="text-2xl font-black text-slate-900">{estadoAprendizCounts.certificado}</div>
+              <p className="text-[9.5px] font-bold text-sena/90 mt-0.5">
+                {estadoAprendizCounts.total > 0 ? Math.round((estadoAprendizCounts.certificado / estadoAprendizCounts.total) * 100) : 0}% del total
+              </p>
+            </div>
+          </div>
+
+          {/* Por Certificar */}
+          <div className="bg-teal-50/60 border border-teal-200/80 rounded-2xl p-3.5 flex flex-col justify-between hover:shadow-md transition-all">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-black uppercase text-teal-700 tracking-wider">Por Certificar</span>
+              <CheckCircle2 className="w-4 h-4 text-teal-600" />
+            </div>
+            <div className="mt-2">
+              <div className="text-2xl font-black text-slate-900">{estadoAprendizCounts.porCertificar}</div>
+              <p className="text-[9.5px] font-bold text-teal-700 mt-0.5">
+                {estadoAprendizCounts.total > 0 ? Math.round((estadoAprendizCounts.porCertificar / estadoAprendizCounts.total) * 100) : 0}% del total
+              </p>
+            </div>
+          </div>
+
+          {/* En Formación */}
+          <div className="bg-blue-50/60 border border-blue-200/80 rounded-2xl p-3.5 flex flex-col justify-between hover:shadow-md transition-all">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-black uppercase text-blue-700 tracking-wider">En Formación</span>
+              <GraduationCap className="w-4 h-4 text-blue-600" />
+            </div>
+            <div className="mt-2">
+              <div className="text-2xl font-black text-slate-900">{estadoAprendizCounts.enFormacion}</div>
+              <p className="text-[9.5px] font-bold text-blue-700 mt-0.5">
+                {estadoAprendizCounts.total > 0 ? Math.round((estadoAprendizCounts.enFormacion / estadoAprendizCounts.total) * 100) : 0}% del total
+              </p>
+            </div>
+          </div>
+
+          {/* Aplazado */}
+          <div className="bg-amber-50/60 border border-amber-200/80 rounded-2xl p-3.5 flex flex-col justify-between hover:shadow-md transition-all">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-black uppercase text-amber-700 tracking-wider">Aplazado</span>
+              <Clock className="w-4 h-4 text-amber-600" />
+            </div>
+            <div className="mt-2">
+              <div className="text-2xl font-black text-slate-900">{estadoAprendizCounts.aplazado}</div>
+              <p className="text-[9.5px] font-bold text-amber-700 mt-0.5">
+                {estadoAprendizCounts.total > 0 ? Math.round((estadoAprendizCounts.aplazado / estadoAprendizCounts.total) * 100) : 0}% del total
+              </p>
+            </div>
+          </div>
+
+          {/* Cancelado */}
+          <div className="bg-red-50/60 border border-red-200/80 rounded-2xl p-3.5 flex flex-col justify-between hover:shadow-md transition-all">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-black uppercase text-red-700 tracking-wider">Cancelado</span>
+              <XCircle className="w-4 h-4 text-red-600" />
+            </div>
+            <div className="mt-2">
+              <div className="text-2xl font-black text-slate-900">{estadoAprendizCounts.cancelado}</div>
+              <p className="text-[9.5px] font-bold text-red-700 mt-0.5">
+                {estadoAprendizCounts.total > 0 ? Math.round((estadoAprendizCounts.cancelado / estadoAprendizCounts.total) * 100) : 0}% del total
+              </p>
+            </div>
+          </div>
+
+          {/* Retiro Voluntario */}
+          <div className="bg-slate-100/80 border border-slate-200 rounded-2xl p-3.5 flex flex-col justify-between hover:shadow-md transition-all">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-black uppercase text-slate-600 tracking-wider">Retiro Voluntario</span>
+              <UserMinus className="w-4 h-4 text-slate-500" />
+            </div>
+            <div className="mt-2">
+              <div className="text-2xl font-black text-slate-900">{estadoAprendizCounts.retiroVoluntario}</div>
+              <p className="text-[9.5px] font-bold text-slate-500 mt-0.5">
+                {estadoAprendizCounts.total > 0 ? Math.round((estadoAprendizCounts.retiroVoluntario / estadoAprendizCounts.total) * 100) : 0}% del total
+              </p>
             </div>
           </div>
         </div>
