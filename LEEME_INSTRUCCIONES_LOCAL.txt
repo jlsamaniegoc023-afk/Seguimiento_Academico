@@ -14,7 +14,7 @@ OPCIÓN 1: RÁPIDA Y PORTÁTIL (Recomendada para ver de inmediato)
 2. Abre la carpeta extraída.
 3. Haz doble clic directamente sobre el archivo:
    
-    Dashboard.html
+   👉  Dashboard.html
 
 4. ¡Listo! Se abrirá la aplicación completa con todos sus datos,
    gráficos y el nuevo calendario/Gantt de cobertura listo para usar,

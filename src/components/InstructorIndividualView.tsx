@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Search } from 'lucide-react';
-import { ReporteHorasRecord } from './HorasReportadasView';
+import { ReporteHorasRecord, cleanInstructorName } from './HorasReportadasView';
 import { InstructorTrendChart, InstructorBreakdownChart } from './HorasCharts';
 
 interface InstructorIndividualViewProps {
@@ -38,13 +38,13 @@ export function InstructorIndividualView({ records, monthsList }: InstructorIndi
     const map = new Map<string, { id: string; name: string; doc: string; vinculacion: string }>();
 
     records.forEach(r => {
+      const cName = cleanInstructorName(r.instructor || 'INSTRUCTOR SIN NOMBRE');
       const doc = r.documentoInstructor || '';
-      const key = doc || (r.instructor || 'INSTRUCTOR SIN NOMBRE').toUpperCase().trim();
-      const name = r.instructor || 'INSTRUCTOR SIN NOMBRE';
+      const key = doc || cName.toUpperCase().trim();
       if (!map.has(key)) {
         map.set(key, {
           id: key,
-          name: name,
+          name: cName.toUpperCase(),
           doc,
           vinculacion: r.vinculacion || 'CONTRATISTA SENA'
         });
@@ -77,22 +77,36 @@ export function InstructorIndividualView({ records, monthsList }: InstructorIndi
     if (instRecords.length === 0) return null;
 
     const first = instRecords[0];
-    const instructorName = first.instructor;
+    const instructorName = cleanInstructorName(first.instructor || '');
     const documento = first.documentoInstructor || selectedInstructorId;
 
-    const orderedMonths = ["Febrero", "Marzo", "Abril", "Mayo", "Junio"];
+    const monthsToUse = monthsList && monthsList.length > 0 
+      ? monthsList 
+      : ["Febrero", "Marzo", "Abril", "Mayo", "Junio"];
 
-    const monthlyRows = orderedMonths.map(m => {
-      const monthRec = instRecords.find(r => (r.hoja || '').toLowerCase() === m.toLowerCase());
-      if (monthRec) {
+    const monthlyRows = monthsToUse.map(m => {
+      const monthName = m.toLowerCase().trim();
+      const matchingRecs = instRecords.filter(r => {
+        if (!r.hoja) return false;
+        const h = r.hoja.toLowerCase().trim();
+        return h === monthName || h.includes(monthName) || monthName.includes(h);
+      });
+
+      if (matchingRecs.length > 0) {
+        const sumFormacion = matchingRecs.reduce((s, r) => s + (r.totalHorasFormacion !== undefined && r.totalHorasFormacion !== null ? r.totalHorasFormacion : ((r.horasTituladaLectiva || 0) + (r.horasComplementaria || 0))), 0);
+        const sumAdicionales = matchingRecs.reduce((s, r) => s + (r.horasAdicionales || 0), 0);
+        const sumTotal = matchingRecs.reduce((s, r) => s + (r.totalHorasInstructor !== undefined && r.totalHorasInstructor !== null ? r.totalHorasInstructor : (r.horasEjecutadas || 0)), 0);
+        const vinc = matchingRecs[0].vinculacion || first.vinculacion || 'CONTRATISTA SENA';
+
         return {
           MES: m,
-          TIPO_VINCULACION: monthRec.vinculacion || 'CONTRATISTA SENA',
-          TOTAL_H_FORMACION: monthRec.totalHorasFormacion || 0,
-          TOTAL_H_ADICIONALES: monthRec.horasAdicionales || 0,
-          TOTAL_H_INSTRUCTOR: monthRec.totalHorasInstructor || 0
+          TIPO_VINCULACION: vinc,
+          TOTAL_H_FORMACION: sumFormacion,
+          TOTAL_H_ADICIONALES: sumAdicionales,
+          TOTAL_H_INSTRUCTOR: sumTotal
         };
       }
+
       return {
         MES: m,
         TIPO_VINCULACION: first.vinculacion || 'CONTRATISTA SENA',
@@ -100,7 +114,7 @@ export function InstructorIndividualView({ records, monthsList }: InstructorIndi
         TOTAL_H_ADICIONALES: 0,
         TOTAL_H_INSTRUCTOR: 0
       };
-    }).filter(r => r.TOTAL_H_INSTRUCTOR > 0 || instRecords.some(x => (x.hoja || '').toLowerCase() === r.MES.toLowerCase()));
+    });
 
     const activeRows = monthlyRows.length > 0 ? monthlyRows : instRecords.map(r => ({
       MES: r.hoja || 'Febrero',
