@@ -19,6 +19,7 @@ import GestionCurricularView from './components/GestionCurricularView';
 import IndicadoresView from './components/IndicadoresView';
 import SeguimientoEPView from './components/SeguimientoEPView';
 import HorasReportadasView from './components/HorasReportadasView';
+import AnalisisDF14View from './components/AnalisisDF14View';
 
 import { 
   Upload, 
@@ -35,7 +36,8 @@ import {
   LogOut,
   BookOpen,
   BarChart3,
-  Clock
+  Clock,
+  FileSpreadsheet
 } from 'lucide-react';
 
 export default function App() {
@@ -146,6 +148,7 @@ export default function App() {
     { id: 'programacion', label: 'Programación', icon: Calendar },
     { id: 'separator-section', label: 'Gestión & Calidad', icon: null, isSeparator: true },
     { id: 'horas-reportadas', label: 'Horas Reportadas Instructor', icon: Clock },
+    { id: 'analisis-df14', label: 'Análisis Fichas DF 14', icon: FileSpreadsheet },
     { id: 'gestion-curricular', label: 'Gestión Curricular', icon: BookOpen, disabled: rows.length === 0 },
     { id: 'indicadores', label: 'Indicadores de Gestión', icon: BarChart3, disabled: rows.length === 0 }
   ];
@@ -375,6 +378,10 @@ export default function App() {
                 selectedFichaId={selectedFichaId}
                 setSelectedFichaId={setSelectedFichaId}
               />
+            )}
+
+            {activeTab === 'analisis-df14' && (
+              <AnalisisDF14View />
             )}
 
             {activeTab === 'gestion-curricular' && (

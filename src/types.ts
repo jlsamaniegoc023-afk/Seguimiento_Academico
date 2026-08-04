@@ -76,5 +76,6 @@ export type ViewType =
   | 'seguimiento-ep'
   | 'programacion'
   | 'horas-reportadas'
+  | 'analisis-df14'
   | 'gestion-curricular'
   | 'indicadores';
