@@ -3,7 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { SofiaRow, ApprenticeStat, CompetenciaStat } from './types';
+import { SofiaRow, ApprenticeStat, CompetenciaStat, InasistenciaRecord } from './types';
+import { getInasistenciasAprendiz } from './services/inasistenciasService';
 
 export function getField(r: SofiaRow, ...keys: string[]): string {
   for (const k of keys) {
@@ -51,7 +52,7 @@ export const getInstructor = (r: SofiaRow): string => {
   return getField(r, 'Instructor', 'Nombre Instructor', 'Funcionario', 'Calificado Por');
 };
 
-export function computeAprendizStats(data: SofiaRow[]): ApprenticeStat[] {
+export function computeAprendizStats(data: SofiaRow[], inasistencias: InasistenciaRecord[] = []): ApprenticeStat[] {
   const m: { [id: string]: ApprenticeStat } = {};
   data.forEach(r => {
     const id = getDoc(r) || getNombre(r);
@@ -66,7 +67,10 @@ export function computeAprendizStats(data: SofiaRow[]): ApprenticeStat[] {
         total: 0,
         ap: 0,
         na: 0,
-        pe: 0
+        pe: 0,
+        horasInasistencia: 0,
+        totalInasistencias: 0,
+        detallesInasistencias: []
       };
     }
     m[id].total++;
@@ -78,6 +82,17 @@ export function computeAprendizStats(data: SofiaRow[]): ApprenticeStat[] {
     const estado = getEstado(r);
     if (estado) m[id].estado = estado;
   });
+
+  // Calculate inasistencias for each apprentice
+  if (inasistencias && inasistencias.length > 0) {
+    Object.values(m).forEach(apprentice => {
+      const inas = getInasistenciasAprendiz(inasistencias, apprentice.doc, apprentice.ficha, apprentice.nombre);
+      apprentice.horasInasistencia = inas.totalHoras;
+      apprentice.totalInasistencias = inas.totalReportes;
+      apprentice.detallesInasistencias = inas.records;
+    });
+  }
+
   return Object.values(m);
 }
 

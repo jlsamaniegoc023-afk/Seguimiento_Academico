@@ -37,7 +37,8 @@ import {
   Link2,
   FileUp,
   Sparkles,
-  Check
+  Check,
+  Trash2
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -461,10 +462,12 @@ export default function AnalisisDF14View() {
   });
 
   // Google Drive Sync State
-  const DEFAULT_DRIVE_URL = 'https://drive.google.com/drive/folders/1khmfgzE-GFmlWZvtGlaBXfoyh8LJgiTK?usp=sharing';
+  const DEFAULT_DRIVE_FOLDER_URL = 'https://drive.google.com/drive/folders/1khmfgzE-GFmlWZvtGlaBXfoyh8LJgiTK?usp=sharing';
+  const DEFAULT_FOLDER_ID = '1khmfgzE-GFmlWZvtGlaBXfoyh8LJgiTK';
+  const DEFAULT_FILE_ID = '1Ll1g7SmYMytc5qhmI1llL1l0tBfMqe5X';
   const [showDriveModal, setShowDriveModal] = useState<boolean>(false);
   const [driveUrl, setDriveUrl] = useState<string>(() => {
-    return localStorage.getItem('sena_df14_drive_url') || DEFAULT_DRIVE_URL;
+    return localStorage.getItem('sena_df14_drive_url') || DEFAULT_DRIVE_FOLDER_URL;
   });
   const [isSyncingDrive, setIsSyncingDrive] = useState<boolean>(false);
   const [driveSyncError, setDriveSyncError] = useState<string | null>(null);
@@ -570,11 +573,22 @@ export default function AnalisisDF14View() {
       }
 
       const findColIdx = (keys: string[], defaultIdx: number, excludeKeys: string[] = []): number => {
+        // First pass: exact header match
         for (const k of keys) {
           const kUpper = k.toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, '_');
           for (const [hKey, idx] of Object.entries(headerMap)) {
             if (excludeKeys.some(ex => hKey.includes(ex.toUpperCase()))) continue;
-            if (hKey === kUpper || hKey.includes(kUpper)) {
+            if (hKey === kUpper) {
+              return idx;
+            }
+          }
+        }
+        // Second pass: partial header match
+        for (const k of keys) {
+          const kUpper = k.toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, '_');
+          for (const [hKey, idx] of Object.entries(headerMap)) {
+            if (excludeKeys.some(ex => hKey.includes(ex.toUpperCase()))) continue;
+            if (hKey.includes(kUpper)) {
               return idx;
             }
           }
@@ -582,31 +596,29 @@ export default function AnalisisDF14View() {
         return defaultIdx;
       };
 
-      // Columna L is Column 12 (0-indexed 11)
+      // Column mapping aligned with DF-14A_1.xml (Columna L is 11, G is 6, M is 12, etc.)
       const colFicha = findColIdx(['FICHA', 'NUMERO_FICHA', 'CODIGO_FICHA', 'ID_GRUPO', 'NUM_FICHA'], 11);
-      // Columna G is Column 7 in Excel (0-indexed 6)
-      const colPrograma = findColIdx(['PROGRAMA', 'NOMBRE_PROGRAMA', 'ESPECIALIDAD', 'CARRERA'], 6);
-      const colNivel = findColIdx(['NIVEL', 'NIVEL_FORMACION', 'TIPO_NIVEL'], 4);
-      // Columna M in Excel (0-indexed 12) is FECHA_INICIO_FICHA
+      const colPrograma = findColIdx(['PROGRAMA', 'NOMBRE_PROGRAMA', 'ESPECIALIDAD', 'CARRERA'], 6, ['CODIGO', 'VERSION']);
+      const colNivel = findColIdx(['NIVEL_FORMACION', 'NIVEL', 'TIPO_NIVEL'], 7);
       const colInicio = findColIdx(['FECHA_INICIO_FICHA', 'FECHA_INICIO', 'FECHAINICIOFICHA', 'INICIO_FICHA', 'FECHA_INICIACION', 'INICIO'], 12);
       const colFin = findColIdx(['FECHA_FIN_FICHA', 'FECHA_FIN', 'FIN'], 13);
-      const colEstado = findColIdx(['ESTADO_FICHA', 'ESTADO'], 11);
+      const colEstado = findColIdx(['ESTADO_FICHA', 'ESTADO'], 15);
       const colVigencia = findColIdx(['VIGENCIA', 'ANIO', 'AÑO'], 10);
       const colMunicipio = findColIdx(['MUNICIPIO', 'CIUDAD'], 14);
-      const colCentro = findColIdx(['CENTRO', 'CENTRO_FORMACION'], 3);
+      const colCentro = findColIdx(['CENTRO', 'CENTRO_FORMACION'], 3, ['CODIGO']);
       const colInstructor = findColIdx(['INSTRUCTOR', 'RESPONSABLE', 'DOCENTE'], 8);
       const colTotal = findColIdx(['TOTAL_APRENDICES', 'TOTAL', 'APRENDICES'], 15);
-      // Columna AA in Excel (0-indexed 26) is FORMACION / EN_FORMACION
-      const colFormacion = findColIdx(['EN_FORMACION', 'FORMACION', 'FORMACIÓN'], 26, ['CENTRO', 'NIVEL', 'PROGRAMA', 'FECHA', 'TIPO', 'LUGAR']);
-      const colCertificados = findColIdx(['CERTIFICADO', 'CERTIFICADOS', 'CERTIFICACION'], 18);
-      const colPorCertificar = findColIdx(['POR_CERTIFICAR', 'POR_CERTIFICADO'], 19);
-      const colCancelado = findColIdx(['CANCELADO', 'DESERTOR', 'DESERTORES', 'CANCELADOS'], 20);
-      const colCondicionado = findColIdx(['CONDICIONADO'], 21);
-      const colAplazado = findColIdx(['APLAZADO'], 22);
-      const colRetiro = findColIdx(['RETIRO_VOLUNTARIO'], 23);
+
+      const colFormacion = findColIdx(['FORMACION', 'EN_FORMACION', 'FORMACIÓN'], 26, ['CENTRO', 'NIVEL', 'PROGRAMA', 'FECHA', 'TIPO', 'LUGAR']);
+      const colCertificados = findColIdx(['CERTIFICADO', 'CERTIFICADOS', 'CERTIFICACION'], 34);
+      const colPorCertificar = findColIdx(['POR_CERTIFICAR', 'POR_CERTIFICADO'], 33);
+      const colCancelado = findColIdx(['CANCELADO', 'DESERTOR', 'DESERTORES', 'CANCELADOS'], 32);
+      const colCondicionado = findColIdx(['CONDICIONADO'], 27);
+      const colAplazado = findColIdx(['APLAZADO'], 28);
+      const colRetiro = findColIdx(['RETIRO_VOLUNTARIO'], 29);
       const colTransito = findColIdx(['EN_TRANSITO'], 24);
       const colInduccion = findColIdx(['INDUCCION'], 25);
-      const colTrasladado = findColIdx(['TRASLADADO'], 27);
+      const colTrasladado = findColIdx(['TRASLADADO'], 35);
 
       // Process ALL data rows in the XML
       allRows.forEach((cells, rIdx) => {
@@ -766,58 +778,90 @@ export default function AnalisisDF14View() {
     try {
       localStorage.setItem('sena_df14_drive_url', driveUrl);
 
-      // Extract File/Folder ID from URL
-      let fileId = '';
+      // Extract File or Folder ID from URL
+      let targetFileId = DEFAULT_FILE_ID;
       const matchFile = driveUrl.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
       const matchFolder = driveUrl.match(/\/folders\/([a-zA-Z0-9_-]+)/);
       const matchIdParam = driveUrl.match(/[?&]id=([a-zA-Z0-9_-]+)/);
 
-      if (matchFile) fileId = matchFile[1];
-      else if (matchFolder) fileId = matchFolder[1];
-      else if (matchIdParam) fileId = matchIdParam[1];
+      if (matchFile) {
+        targetFileId = matchFile[1];
+      } else if (matchFolder) {
+        const folderId = matchFolder[1];
+        if (folderId === DEFAULT_FOLDER_ID || folderId === '1khmfgzE-GFmlWZvtGlaBXfoyh8LJgiTK') {
+          targetFileId = DEFAULT_FILE_ID;
+        } else {
+          targetFileId = folderId;
+        }
+      } else if (matchIdParam) {
+        targetFileId = matchIdParam[1];
+      }
 
-      // Simulate network request delay for feedback
-      await new Promise(resolve => setTimeout(resolve, 600));
+      let xmlLoaded = false;
+      let loadedXmlText = '';
 
-      // Direct XML download URL candidate if a direct file ID was provided
-      if (fileId && !driveUrl.includes('/folders/')) {
-        const directDownloadUrl = `https://docs.google.com/uc?export=download&id=${fileId}`;
-        const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(directDownloadUrl)}`;
+      // Method 1: Local API proxy route
+      try {
+        const proxyRes = await fetch(`/api/drive-proxy?fileId=${targetFileId}`);
+        if (proxyRes.ok) {
+          const text = await proxyRes.text();
+          if (text && (text.includes('Workbook') || text.includes('Table') || text.includes('Row') || text.includes('<?xml'))) {
+            loadedXmlText = text;
+            xmlLoaded = true;
+          }
+        }
+      } catch (e) {
+        console.log('Local drive-proxy attempted, trying direct download URL.', e);
+      }
 
+      // Method 2: Direct Google Drive usercontent download URL
+      if (!xmlLoaded) {
+        const directDownloadUrl = `https://drive.usercontent.google.com/download?id=${targetFileId}&export=download&confirm=t`;
         try {
-          const res = await fetch(proxyUrl);
+          const res = await fetch(directDownloadUrl);
           if (res.ok) {
-            const xmlText = await res.text();
-            if (xmlText && (xmlText.includes('<') || xmlText.includes('Workbook') || xmlText.includes('Table'))) {
-              parseXMLText(xmlText, `Reporte_Drive_DF14_${fileId.substring(0, 6)}.xml`);
-              const now = new Date();
-              const formattedDate = `${now.toLocaleDateString('es-CO')} ${now.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}`;
-              setLastDriveSync(formattedDate);
-              localStorage.setItem('sena_df14_last_drive_sync', formattedDate);
-              setDriveSyncSuccess(`¡Sincronización con Google Drive completada! Reporte XML de carpeta ${fileId.substring(0, 8)}... cargado.`);
-              setIsSyncingDrive(false);
-              return;
+            const text = await res.text();
+            if (text && (text.includes('Workbook') || text.includes('Table') || text.includes('Row') || text.includes('<?xml'))) {
+              loadedXmlText = text;
+              xmlLoaded = true;
             }
           }
         } catch (e) {
-          console.log('Direct proxy fetch attempted, falling back to folder direct access flow.', e);
+          console.log('Direct fetch error, attempting public CORS proxy.', e);
         }
       }
 
-      // Default folder sync behavior
-      const now = new Date();
-      const formattedDate = `${now.toLocaleDateString('es-CO')} ${now.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}`;
-      setLastDriveSync(formattedDate);
-      localStorage.setItem('sena_df14_last_drive_sync', formattedDate);
-
-      if (!loadedFileName) {
-        setLoadedFileName('Reporte_Drive_1khmfgzE.xml');
-        localStorage.setItem('sena_df14_file_name', 'Reporte_Drive_1khmfgzE.xml');
+      // Method 3: Public CORS proxy fallback
+      if (!xmlLoaded) {
+        const directDownloadUrl = `https://drive.usercontent.google.com/download?id=${targetFileId}&export=download&confirm=t`;
+        const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(directDownloadUrl)}`;
+        try {
+          const res = await fetch(proxyUrl);
+          if (res.ok) {
+            const text = await res.text();
+            if (text && (text.includes('Workbook') || text.includes('Table') || text.includes('Row') || text.includes('<?xml'))) {
+              loadedXmlText = text;
+              xmlLoaded = true;
+            }
+          }
+        } catch (e) {
+          console.log('Public CORS proxy error.', e);
+        }
       }
 
-      setDriveSyncSuccess(`¡Sincronización con Google Drive realizada exitosamente! (${formattedDate}) - Carpeta 1khmfgzE-GFmlWZvtGlaBXfoyh8LJgiTK`);
+      if (xmlLoaded && loadedXmlText) {
+        parseXMLText(loadedXmlText, `DF-14A_1.xml`);
+        const now = new Date();
+        const formattedDate = `${now.toLocaleDateString('es-CO')} ${now.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}`;
+        setLastDriveSync(formattedDate);
+        localStorage.setItem('sena_df14_last_drive_sync', formattedDate);
+        setDriveSyncSuccess(`¡Sincronización con Google Drive exitosa! Se verificó la información de la carpeta compartida y se analizó el reporte XML (DF-14A_1.xml).`);
+      } else {
+        throw new Error('No se pudo obtener el archivo XML desde la carpeta de Google Drive.');
+      }
     } catch (err: any) {
-      setDriveSyncError('No se pudo verificar automáticamente la ruta de Drive. Puedes revisar la URL en opciones.');
+      console.error('Drive sync failed:', err);
+      setDriveSyncError('No se pudo sincronizar automáticamente el archivo de Drive. Verifica la conexión o usa la opción "Cargar Local" para seleccionar el archivo XML descargado.');
     } finally {
       setIsSyncingDrive(false);
     }
@@ -858,6 +902,25 @@ export default function AnalisisDF14View() {
       localStorage.removeItem('sena_df14_xml_parsed_data');
       localStorage.removeItem('sena_df14_last_updated');
       localStorage.removeItem('sena_df14_file_name');
+    }
+  };
+
+  // Limpiar todos los datos (dejar en blanco)
+  const handleClearData = () => {
+    if (confirm('¿Desea limpiar todos los datos y dejar la vista de Análisis DF-14 en blanco?')) {
+      setFichasData([]);
+      setSelectedFichaId('');
+      setLoadedFileName('Sin datos (Vista Limpia)');
+      setLastDriveSync(null);
+      setDriveSyncSuccess('Se han limpiado todos los datos. La vista de Análisis DF-14 está en blanco.');
+      setDriveSyncError(null);
+      const nowStr = new Date().toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' });
+      setLastUpdated(nowStr);
+      localStorage.setItem('sena_df14_xml_parsed_data', JSON.stringify([]));
+      localStorage.setItem('sena_df14_last_updated', nowStr);
+      localStorage.setItem('sena_df14_file_name', 'Sin datos (Vista Limpia)');
+      localStorage.removeItem('sena_df14_last_drive_sync');
+      handleResetFilters();
     }
   };
 
@@ -1139,6 +1202,15 @@ export default function AnalisisDF14View() {
             Exportar
           </button>
 
+          <button
+            onClick={handleClearData}
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
+            title="Limpiar todos los datos y dejar el Análisis DF-14 en blanco"
+          >
+            <Trash2 className="w-4 h-4 text-rose-600" />
+            Limpiar Datos
+          </button>
+
           <div className="flex items-center gap-1">
             <button
               onClick={handleSyncFromDrive}
@@ -1269,7 +1341,20 @@ export default function AnalisisDF14View() {
 
       {/* Loaded File Notice & Drive Status */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
-        {loadedFileName ? (
+        {fichasData.length === 0 ? (
+          <div className="flex-1 bg-amber-50 border border-amber-200 text-amber-900 px-4 py-2.5 rounded-2xl flex items-center justify-between text-xs font-medium shadow-xs">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+              <span>Vista de Análisis DF-14 en blanco (0 fichas cargadas). Haz clic en <strong className="font-bold text-blue-800">Sincronizar Drive</strong> o <strong className="font-bold text-sena">Cargar Local</strong> para procesar un informe.</span>
+            </div>
+            <button
+              onClick={handleResetDataset}
+              className="text-[10px] font-extrabold text-amber-800 hover:text-amber-950 underline cursor-pointer ml-3 shrink-0"
+            >
+              Cargar datos predeterminados
+            </button>
+          </div>
+        ) : loadedFileName ? (
           <div className="flex-1 bg-emerald-50 border border-emerald-200 text-sena px-4 py-2.5 rounded-2xl flex items-center justify-between text-xs font-semibold shadow-xs">
             <div className="flex items-center gap-2">
               <CheckCircle2 className="w-4 h-4 text-sena shrink-0" />
@@ -1312,8 +1397,60 @@ export default function AnalisisDF14View() {
         )}
       </div>
 
-      {/* KPI METRIC CARDS GRID (7 Cards) */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
+      {/* MAIN DASHBOARD CONTENT OR EMPTY STATE */}
+      {fichasData.length === 0 ? (
+        <div className="bg-white rounded-3xl p-8 sm:p-12 border border-slate-200/80 shadow-xs text-center flex flex-col items-center justify-center my-4 space-y-5 animate-in fade-in zoom-in-95 duration-200">
+          <div className="w-20 h-20 rounded-3xl bg-slate-100 flex items-center justify-center text-slate-400 border border-slate-200/80 shadow-inner">
+            <FileSpreadsheet className="w-10 h-10 text-slate-400" />
+          </div>
+
+          <div className="max-w-lg space-y-2">
+            <h3 className="text-xl font-black text-slate-800 tracking-tight">Análisis DF-14 Vacío (Vista Limpia)</h3>
+            <p className="text-xs text-slate-500 leading-relaxed font-medium">
+              Se han limpiado todos los datos. La vista de Análisis DF-14 no contiene información cargada y se encuentra lista para procesar y analizar un nuevo reporte XML de SOFIA Plus o Google Drive.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+            <button
+              onClick={handleSyncFromDrive}
+              disabled={isSyncingDrive}
+              className="flex items-center gap-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white rounded-2xl text-xs font-black uppercase tracking-wider transition-all shadow-md cursor-pointer border border-blue-500"
+            >
+              <CloudDownload className={`w-4 h-4 ${isSyncingDrive ? 'animate-bounce' : ''}`} />
+              {isSyncingDrive ? 'Sincronizando...' : 'Sincronizar desde Google Drive'}
+            </button>
+
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="flex items-center gap-2 px-5 py-2.5 bg-sena hover:bg-sena-dark text-white rounded-2xl text-xs font-black uppercase tracking-wider transition-all shadow-md cursor-pointer"
+            >
+              <FileUp className="w-4 h-4" />
+              Cargar Archivo XML Local
+            </button>
+
+            <button
+              onClick={() => setShowDriveModal(true)}
+              className="flex items-center gap-2 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-2xl text-xs font-bold transition-all border border-slate-200 cursor-pointer"
+            >
+              <Sparkles className="w-4 h-4 text-slate-500" />
+              Pegar Código XML
+            </button>
+          </div>
+
+          <div className="pt-3 border-t border-slate-100 w-full max-w-xs">
+            <button
+              onClick={handleResetDataset}
+              className="text-[11px] font-extrabold text-slate-400 hover:text-sena underline transition-colors cursor-pointer"
+            >
+              Restablecer datos predeterminados de prueba (Centro Minero)
+            </button>
+          </div>
+        </div>
+      ) : (
+        <>
+          {/* KPI METRIC CARDS GRID (7 Cards) */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
         {/* Card 1 */}
         <div className="bg-white rounded-2xl p-3.5 border border-slate-200/80 shadow-sm flex flex-col justify-between">
           <div>
@@ -1468,7 +1605,7 @@ export default function AnalisisDF14View() {
                 </PieChart>
               </ResponsiveContainer>
               <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none text-center">
-                <span className="text-base font-black text-slate-900 leading-none">{totalFichasCount || 325}</span>
+                <span className="text-base font-black text-slate-900 leading-none">{totalFichasCount}</span>
                 <span className="text-[9px] font-extrabold text-slate-400 uppercase">Total</span>
               </div>
             </div>
@@ -2252,6 +2389,8 @@ export default function AnalisisDF14View() {
 
         </div>
       </div>
+        </>
+      )}
 
       {/* GOOGLE DRIVE SYNC MODAL */}
       {showDriveModal && (
@@ -2290,7 +2429,7 @@ export default function AnalisisDF14View() {
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
                     <Folder className="w-4 h-4 text-blue-600" />
-                    Carpeta de Google Drive Configurada
+                    Archivo Compartido Google Drive
                   </span>
                   <a
                     href={driveUrl}
@@ -2305,20 +2444,20 @@ export default function AnalisisDF14View() {
 
                 <div>
                   <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">
-                    Enlace de la Carpeta o Archivo Directo
+                    Enlace de Google Drive Vinculado
                   </label>
                   <div className="flex gap-2">
                     <input
                       type="text"
                       value={driveUrl}
                       onChange={(e) => setDriveUrl(e.target.value)}
-                      placeholder="https://drive.google.com/drive/folders/..."
+                      placeholder="https://drive.google.com/file/d/..."
                       className="flex-1 bg-white border border-slate-300 focus:border-blue-600 rounded-xl px-3 py-2 text-xs font-mono font-medium outline-none transition-all"
                     />
                     <button
-                      onClick={() => setDriveUrl(DEFAULT_DRIVE_URL)}
+                      onClick={() => setDriveUrl(DEFAULT_DRIVE_FOLDER_URL)}
                       className="px-3 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-bold rounded-xl transition-all cursor-pointer"
-                      title="Restablecer enlace original"
+                      title="Restablecer enlace predeterminado"
                     >
                       Predeterminado
                     </button>
@@ -2327,7 +2466,7 @@ export default function AnalisisDF14View() {
 
                 <div className="flex items-center gap-2 text-[11px] font-semibold text-slate-600 bg-blue-50/60 p-2.5 rounded-xl border border-blue-100">
                   <Info className="w-4 h-4 text-blue-600 shrink-0" />
-                  <span>ID de Carpeta actual: <strong className="font-mono text-blue-950">1khmfgzE-GFmlWZvtGlaBXfoyh8LJgiTK</strong></span>
+                  <span>ID de Archivo Drive actual: <strong className="font-mono text-blue-950">{driveUrl.match(/\/file\/d\/([a-zA-Z0-9_-]+)/)?.[1] || DEFAULT_FILE_ID}</strong></span>
                 </div>
               </div>
 
@@ -2338,7 +2477,7 @@ export default function AnalisisDF14View() {
                   <div>
                     <p>{driveSyncSuccess}</p>
                     <p className="text-[10px] text-emerald-700 mt-1 font-normal">
-                      Abre la carpeta en Drive para ver o descargar el XML más reciente y cárgalo directamente en el botón de abajo.
+                      Se han sincronizado y actualizado todas las fichas del reporte DF-14A.
                     </p>
                   </div>
                 </div>
@@ -2380,7 +2519,7 @@ export default function AnalisisDF14View() {
                   className="flex items-center justify-center gap-2 p-3.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-2xl text-xs font-black uppercase tracking-wider transition-all border border-slate-300 text-center"
                 >
                   <ExternalLink className="w-4 h-4 text-slate-600" />
-                  Abrir Carpeta de Drive
+                  Abrir Archivo en Drive
                 </a>
               </div>
 

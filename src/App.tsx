@@ -4,7 +4,8 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { SofiaRow, FichaMeta, ProgramacionRow, ViewType } from './types';
+import { SofiaRow, FichaMeta, ProgramacionRow, ViewType, InasistenciaRecord } from './types';
+import { INITIAL_INASISTENCIAS_RECORDS } from './data/inasistenciasSampleData';
 import CargarView from './components/CargarView';
 import DashboardView from './components/DashboardView';
 import AprendicesView from './components/AprendicesView';
@@ -50,6 +51,26 @@ export default function App() {
   const [fichas, setFichas] = useState<{ [id: string]: FichaMeta }>({});
   const [programacion, setProgramacion] = useState<ProgramacionRow[]>([]);
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const [inasistencias, setInasistencias] = useState<InasistenciaRecord[]>(() => {
+    try {
+      const saved = localStorage.getItem('sena_inasistencias_records');
+      if (saved) {
+        return JSON.parse(saved);
+      }
+      return INITIAL_INASISTENCIAS_RECORDS;
+    } catch {
+      return INITIAL_INASISTENCIAS_RECORDS;
+    }
+  });
+
+  const handleInasistenciasLoaded = (records: InasistenciaRecord[]) => {
+    setInasistencias(records);
+    try {
+      localStorage.setItem('sena_inasistencias_records', JSON.stringify(records));
+    } catch (e) {
+      console.warn('LocalStorage limit exceeded, caching in memory', e);
+    }
+  };
   
   const [selectedFichaId, setSelectedFichaId] = useState<string>('');
   const [activeTab, setActiveTab] = useState<ViewType>('cargar');
@@ -294,6 +315,8 @@ export default function App() {
                 showLoading={showLoading}
                 existingFichas={fichas}
                 onDeleteFicha={handleDeleteFicha}
+                inasistencias={inasistencias}
+                onInasistenciasLoaded={handleInasistenciasLoaded}
               />
             )}
 
@@ -313,6 +336,7 @@ export default function App() {
                 rows={rows} 
                 selectedFichaId={selectedFichaId}
                 setSelectedFichaId={setSelectedFichaId}
+                inasistencias={inasistencias}
               />
             )}
 

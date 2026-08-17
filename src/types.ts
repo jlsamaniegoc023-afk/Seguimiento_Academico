@@ -31,6 +31,25 @@ export interface ApprenticeStat {
   ap: number;
   na: number;
   pe: number;
+  horasInasistencia?: number;
+  totalInasistencias?: number;
+  detallesInasistencias?: InasistenciaRecord[];
+}
+
+export interface InasistenciaRecord {
+  id: string;
+  ficha: string;
+  codigoFicha: string;
+  programa?: string;
+  instructor: string;
+  idAprendiz: string;
+  docNumerico: string;
+  aprendiz: string;
+  fechaInicio: string;
+  fechaFin: string;
+  cantHoras: number;
+  justificacion: string;
+  observaciones?: string;
 }
 
 export interface CompetenciaStat {
