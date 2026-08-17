@@ -55,7 +55,10 @@ export default function App() {
     try {
       const saved = localStorage.getItem('sena_inasistencias_records');
       if (saved) {
-        return JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length >= INITIAL_INASISTENCIAS_RECORDS.length) {
+          return parsed;
+        }
       }
       return INITIAL_INASISTENCIAS_RECORDS;
     } catch {

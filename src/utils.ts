@@ -4,7 +4,7 @@
  */
 
 import { SofiaRow, ApprenticeStat, CompetenciaStat, InasistenciaRecord } from './types';
-import { getInasistenciasAprendiz } from './services/inasistenciasService';
+import { getInasistenciasAprendiz, buildInasistenciasIndex } from './services/inasistenciasService';
 
 export function getField(r: SofiaRow, ...keys: string[]): string {
   for (const k of keys) {
@@ -83,10 +83,11 @@ export function computeAprendizStats(data: SofiaRow[], inasistencias: Inasistenc
     if (estado) m[id].estado = estado;
   });
 
-  // Calculate inasistencias for each apprentice
+  // Calculate inasistencias for each apprentice using fast index
   if (inasistencias && inasistencias.length > 0) {
+    const index = buildInasistenciasIndex(inasistencias);
     Object.values(m).forEach(apprentice => {
-      const inas = getInasistenciasAprendiz(inasistencias, apprentice.doc, apprentice.ficha, apprentice.nombre);
+      const inas = getInasistenciasAprendiz(index, apprentice.doc, apprentice.ficha, apprentice.nombre);
       apprentice.horasInasistencia = inas.totalHoras;
       apprentice.totalInasistencias = inas.totalReportes;
       apprentice.detallesInasistencias = inas.records;

@@ -15,7 +15,6 @@ import {
   CheckCircle2, 
   Clock, 
   AlertCircle,
-  Link,
   Users
 } from 'lucide-react';
 import { SofiaRow, FichaMeta, InasistenciaRecord } from '../types';
@@ -347,10 +346,6 @@ export default function CargarView({
               <p className="text-xs text-slate-500 mt-1">
                 Lee automáticamente los reportes de inasistencias por ficha y aprendiz para cruzarlos con el estado de matrícula.
               </p>
-              <div className="flex items-center gap-1 text-[11px] text-slate-400 font-semibold mt-1.5">
-                <Link className="w-3 h-3 text-slate-400" />
-                <span className="truncate max-w-sm">Google Drive: Consolidado de Inasistencias</span>
-              </div>
             </div>
           </div>
 
