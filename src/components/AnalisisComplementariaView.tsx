@@ -55,6 +55,7 @@ import {
   SyncInfo,
   DRIVE_FOLDER_URL 
 } from '../services/complementariaService';
+import { InstructorCalendarScheduleView } from './InstructorCalendarScheduleView';
 
 interface AnalisisComplementariaViewProps {
   rows?: SofiaRow[];
@@ -2108,6 +2109,14 @@ export default function AnalisisComplementariaView({}: AnalisisComplementariaVie
               )}
             </div>
           </div>
+
+          {/* CALENDARIO DE PROGRAMACIÓN Y DÍAS DISPONIBLES POR INSTRUCTOR */}
+          <InstructorCalendarScheduleView
+            fichas={fichasComp}
+            selectedInstructor={selectedInstructor}
+            onSelectInstructor={(inst) => setSelectedInstructor(inst)}
+            onViewFichaDetail={(f) => setSelectedFichaDetail(f)}
+          />
         </div>
       )}
 
