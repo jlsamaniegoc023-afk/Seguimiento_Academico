@@ -125,6 +125,49 @@ export default defineConfig(() => {
               res.end(JSON.stringify({ error: e?.message || 'Error en proxy de Google Drive' }));
             }
           });
+
+          server.middlewares.use(async (req, res, next) => {
+            const rawUrl = req.originalUrl || req.url || '';
+            if (!rawUrl.includes('/api/drive-complementaria')) {
+              return next();
+            }
+            try {
+              const urlObj = new URL(rawUrl, `http://${req.headers.host || 'localhost'}`);
+              let fileId = urlObj.searchParams.get('fileId') || '1VyXGzt3xxxodjAmeWRtXEYCjxVmrt5uE';
+              const folderId = urlObj.searchParams.get('folderId') || '';
+              const driveUrl = urlObj.searchParams.get('url') || '';
+
+              if (folderId === '1DqBcInloI9_V2P4g4LxJMum1F5ZDJJ0y' || driveUrl.includes('1DqBcInloI9_V2P4g4LxJMum1F5ZDJJ0y')) {
+                fileId = '1VyXGzt3xxxodjAmeWRtXEYCjxVmrt5uE';
+              }
+
+              const driveDownloadUrl = `https://drive.usercontent.google.com/download?id=${fileId}&export=download&confirm=t`;
+              let response = await fetch(driveDownloadUrl);
+              
+              if (!response.ok) {
+                // Fallback to docs sheets export if applicable
+                const fallbackUrl = `https://docs.google.com/spreadsheets/d/${fileId}/export?format=xlsx`;
+                const fbRes = await fetch(fallbackUrl);
+                if (fbRes.ok) {
+                  response = fbRes;
+                }
+              }
+
+              if (!response.ok) {
+                res.statusCode = response.status;
+                res.end(JSON.stringify({ error: 'No se pudo descargar el reporte PE-04 de Formación Complementaria desde Google Drive.' }));
+                return;
+              }
+
+              const arrayBuf = await response.arrayBuffer();
+              res.setHeader('Content-Type', 'application/vnd.ms-excel; charset=utf-8');
+              res.setHeader('Content-Length', arrayBuf.byteLength.toString());
+              res.end(Buffer.from(arrayBuf));
+            } catch (e: any) {
+              res.statusCode = 500;
+              res.end(JSON.stringify({ error: e?.message || 'Error en proxy de Formación Complementaria Google Drive' }));
+            }
+          });
         }
       },
       react(), 

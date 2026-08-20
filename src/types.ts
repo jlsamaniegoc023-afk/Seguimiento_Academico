@@ -84,6 +84,50 @@ export interface VerificationStat extends ProgramacionRow {
   status: 'aprobado' | 'proceso' | 'vacio';
 }
 
+export interface FichaComplementaria {
+  id: string;
+  ficha: string;
+  codigoFicha?: string;
+  programa: string;
+  codigoPrograma?: string;
+  versionPrograma?: string | number;
+  tipoFormacion: 'Complementaria Virtual' | 'Complementaria Presencial' | 'Complementaria Especial' | string;
+  nivelFormacion?: string;
+  modalidad?: string;
+  jornada?: string;
+  duracionHoras: number;
+  horasPlanta?: number;
+  horasContratistas?: number;
+  horasTotales?: number;
+  fechaInicio: string;
+  fechaFin: string;
+  estadoFicha: 'En ejecución' | 'Terminada' | 'Terminada por fecha' | 'Certificada' | 'Cancelada' | string;
+  vigencia: string;
+  municipio: string;
+  departamento?: string;
+  regional?: string;
+  centro: string;
+  instructor: string;
+  empresa?: string;
+  nitEmpresa?: string;
+  lineaTematica: string;
+  ocupacion?: string;
+  estrategiaEspecial?: string;
+  convenio?: string;
+  cuposProgramados: number;
+  matriculados: number;
+  masculinos?: number;
+  femeninos?: number;
+  noBinario?: number;
+  activos?: number;
+  certificados: number;
+  porCertificar: number;
+  enFormacion: number;
+  desertores: number;
+  cancelados: number;
+  retiroVoluntario: number;
+}
+
 export type ViewType = 
   | 'cargar' 
   | 'dashboard' 
@@ -97,4 +141,5 @@ export type ViewType =
   | 'horas-reportadas'
   | 'analisis-df14'
   | 'gestion-curricular'
-  | 'indicadores';
+  | 'indicadores'
+  | 'analisis-complementaria';

@@ -21,6 +21,7 @@ import IndicadoresView from './components/IndicadoresView';
 import SeguimientoEPView from './components/SeguimientoEPView';
 import HorasReportadasView from './components/HorasReportadasView';
 import AnalisisDF14View from './components/AnalisisDF14View';
+import AnalisisComplementariaView from './components/AnalisisComplementariaView';
 
 import { 
   Upload, 
@@ -38,7 +39,8 @@ import {
   BookOpen,
   BarChart3,
   Clock,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Award
 } from 'lucide-react';
 
 export default function App() {
@@ -174,7 +176,8 @@ export default function App() {
     { id: 'horas-reportadas', label: 'Horas Reportadas Instructor', icon: Clock },
     { id: 'analisis-df14', label: 'Análisis Fichas DF 14', icon: FileSpreadsheet },
     { id: 'gestion-curricular', label: 'Gestión Curricular', icon: BookOpen, disabled: rows.length === 0 },
-    { id: 'indicadores', label: 'Indicadores de Gestión', icon: BarChart3, disabled: rows.length === 0 }
+    { id: 'indicadores', label: 'Indicadores de Gestión', icon: BarChart3, disabled: rows.length === 0 },
+    { id: 'analisis-complementaria', label: 'Análisis Complementaria', icon: Award }
   ];
 
   if (!currentUser) {
@@ -428,6 +431,13 @@ export default function App() {
                 programacion={programacion}
                 selectedFichaId={selectedFichaId}
                 setSelectedFichaId={setSelectedFichaId}
+              />
+            )}
+
+            {activeTab === 'analisis-complementaria' && (
+              <AnalisisComplementariaView
+                rows={rows}
+                fichas={fichas}
               />
             )}
 
