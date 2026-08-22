@@ -1,6 +1,6 @@
 {
   "name": "Seguimiento Académico SENA",
-  "description": "Sistema de seguimiento y análisis académico para fichas SENA, permitiendo analizar juicios, competencias, aprendices y candidatos a etapa productiva.",
+  "description": "Sistema de seguimiento y análisis académico para fichas SENA y Formación Complementaria (PE-04), con sincronización automática desde Google Drive, métricas y calendario de instructores.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

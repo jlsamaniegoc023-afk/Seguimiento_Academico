@@ -52,10 +52,12 @@ import {
   getCachedComplementaria, 
   parseComplementariaWorkbook, 
   saveCachedComplementaria, 
+  clearComplementariaCache,
   SyncInfo,
   DRIVE_FOLDER_URL 
 } from '../services/complementariaService';
 import { InstructorCalendarScheduleView } from './InstructorCalendarScheduleView';
+import { SpecialProgramsAnalysisView } from './SpecialProgramsAnalysisView';
 
 interface AnalisisComplementariaViewProps {
   rows?: SofiaRow[];
@@ -89,6 +91,7 @@ export default function AnalisisComplementariaView({}: AnalisisComplementariaVie
     return getCachedComplementaria().syncInfo;
   });
 
+  const [driveFolderInput, setDriveFolderInput] = useState<string>(DRIVE_FOLDER_URL);
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
   const [syncSuccessMsg, setSyncSuccessMsg] = useState<string | null>(null);
@@ -118,20 +121,24 @@ export default function AnalisisComplementariaView({}: AnalisisComplementariaVie
   // Auto-sync from Google Drive upon opening the view
   const autoSyncDoneRef = useRef(false);
 
-  const handleSyncFromDrive = async (silent: boolean = false) => {
+  const handleSyncFromDrive = async (silent: boolean = false, force: boolean = false, customUrl?: string) => {
     setIsSyncing(true);
     setSyncError(null);
     if (!silent) setSyncSuccessMsg(null);
 
     try {
-      const result = await fetchComplementariaFromDrive();
+      if (force) {
+        clearComplementariaCache();
+      }
+      const urlToUse = customUrl || driveFolderInput || DRIVE_FOLDER_URL;
+      const result = await fetchComplementariaFromDrive(urlToUse, force);
       setFichasComp(result.data);
       setSyncInfo(result.syncInfo);
       
       const ceCount = result.data.filter(f => (f.nivelFormacion || '').toUpperCase().includes('CURSO ESPECIAL') || (f.tipoFormacion || '').includes('Complementaria')).length;
       const evCount = result.data.filter(f => (f.nivelFormacion || '').toUpperCase().includes('EVENTO') || (f.tipoFormacion || '').includes('Evento')).length;
 
-      setSyncSuccessMsg(`Sincronización exitosa: ${result.data.length.toLocaleString('es-CO')} registros PE-04 cargados (${ceCount} Cursos Especiales / Formación Complementaria y ${evCount} Eventos de Divulgación).`);
+      setSyncSuccessMsg(`Sincronización exitosa con Google Drive: ${result.data.length.toLocaleString('es-CO')} registros PE-04 actualizados (${ceCount} Cursos Especiales y ${evCount} Eventos de Divulgación).`);
       setTimeout(() => setSyncSuccessMsg(null), 8000);
     } catch (err: any) {
       console.error('Error sincronizando con Google Drive:', err);
@@ -144,7 +151,7 @@ export default function AnalisisComplementariaView({}: AnalisisComplementariaVie
   useEffect(() => {
     if (!autoSyncDoneRef.current) {
       autoSyncDoneRef.current = true;
-      handleSyncFromDrive(true);
+      handleSyncFromDrive(true, false);
     }
   }, []);
 
@@ -360,7 +367,7 @@ export default function AnalisisComplementariaView({}: AnalisisComplementariaVie
       evento: {
         ...ev,
         share: evShare,
-        tasaCert: ev.matriculados > 0 ? Math.round(((ev.activos + ev.certificados) / ev.matriculados) * 100) : 0
+        tasaCert: ev.matriculados > 0 ? Math.round((ev.certificados / ev.matriculados) * 100) : 0
       }
     };
   }, [filteredFichas]);
@@ -1301,15 +1308,15 @@ export default function AnalisisComplementariaView({}: AnalisisComplementariaVie
               </div>
             </div>
 
-            {/* Card 3: Aprendices Activos / En Formación */}
+            {/* Card 3: Aprendices Certificados */}
             <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Aprendices Activos / Certificados</p>
+                <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Aprendices Certificados</p>
                 <h3 className="text-2xl font-bold text-emerald-700 mt-1">
-                  {(kpis.activos + kpis.certificados).toLocaleString('es-CO')}
+                  {kpis.certificados.toLocaleString('es-CO')}
                 </h3>
                 <p className="text-[11px] text-slate-500 mt-0.5">
-                  Tasa culminación: <span className="font-semibold text-emerald-600">{kpis.tasaCertificacion}%</span>
+                  Tasa certificación: <span className="font-semibold text-emerald-600">{kpis.tasaCertificacion}%</span>
                 </p>
               </div>
               <div className="w-12 h-12 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center border border-indigo-100">
@@ -1455,9 +1462,9 @@ export default function AnalisisComplementariaView({}: AnalisisComplementariaVie
                   </div>
 
                   <div className="p-3 bg-slate-50 rounded-lg border border-slate-200/80">
-                    <p className="text-[11px] font-semibold uppercase text-slate-500">Certificados / Activos</p>
+                    <p className="text-[11px] font-semibold uppercase text-slate-500">Aprendices Certificados</p>
                     <p className="text-lg font-bold text-slate-800 mt-1">
-                      {(nivelBreakdown.cursoEspecial.certificados + nivelBreakdown.cursoEspecial.activos).toLocaleString('es-CO')}
+                      {nivelBreakdown.cursoEspecial.certificados.toLocaleString('es-CO')}
                     </p>
                     <p className="text-[10px] text-emerald-600 mt-0.5">
                       {nivelBreakdown.cursoEspecial.tasaCert}% certificación
@@ -1567,12 +1574,12 @@ export default function AnalisisComplementariaView({}: AnalisisComplementariaVie
                   </div>
 
                   <div className="p-3 bg-slate-50 rounded-lg border border-slate-200/80">
-                    <p className="text-[11px] font-semibold uppercase text-slate-500">Asistentes Atendidos</p>
+                    <p className="text-[11px] font-semibold uppercase text-slate-500">Asistentes Certificados</p>
                     <p className="text-lg font-bold text-slate-800 mt-1">
-                      {(nivelBreakdown.evento.certificados + nivelBreakdown.evento.activos).toLocaleString('es-CO')}
+                      {nivelBreakdown.evento.certificados.toLocaleString('es-CO')}
                     </p>
                     <p className="text-[10px] text-sky-600 mt-0.5">
-                      {nivelBreakdown.evento.tasaCert}% cumplimiento
+                      {nivelBreakdown.evento.tasaCert}% certificación
                     </p>
                   </div>
 
@@ -2043,57 +2050,105 @@ export default function AnalisisComplementariaView({}: AnalisisComplementariaVie
                 </div>
               ) : (
                 /* Specific Instructor Detailed Monthly Breakdown */
-                <div className="bg-slate-50/60 p-4 rounded-xl border border-slate-200">
-                  <div className="flex items-center justify-between mb-3">
-                    <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-2">
-                      <GraduationCap className="w-4 h-4 text-emerald-600" />
-                      Detalle Mensual del Instructor: <strong className="text-emerald-700">{selectedInstructor}</strong>
-                    </h4>
+                <div className="bg-slate-50/60 p-4 rounded-xl border border-slate-200 space-y-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-slate-200">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold">
+                        <GraduationCap className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-2">
+                          Detalle Mensual del Instructor: <span className="text-emerald-700 font-extrabold normal-case text-sm">{selectedInstructor}</span>
+                        </h4>
+                        <p className="text-[11px] text-slate-500">
+                          Horas dictadas calculadas a partir de la sumatoria de la columna <strong className="text-slate-700">AW (TOTAL_HORAS)</strong> del reporte PE-04.
+                        </p>
+                      </div>
+                    </div>
+
                     <button
                       onClick={() => setSelectedInstructor('TODOS')}
-                      className="text-xs font-semibold text-emerald-700 hover:underline"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-emerald-700 bg-white hover:bg-emerald-50 border border-emerald-300 rounded-lg transition-colors shadow-2xs self-start sm:self-auto"
                     >
+                      <Users className="w-3.5 h-3.5" />
                       Volver a ver todos los instructores
                     </button>
+                  </div>
+
+                  {/* 4 Mini Metrics for the selected Instructor */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+                    <div className="p-3 bg-white rounded-lg border border-slate-200 shadow-2xs">
+                      <span className="text-slate-500 block text-[10px] font-bold uppercase tracking-wider">Total Horas Dictadas (Col. AW)</span>
+                      <strong className="text-lg font-black text-emerald-700 mt-0.5 block">
+                        {monthlyFichasDetailedData.totalHoras.toLocaleString('es-CO')} <span className="text-xs font-medium text-slate-500">hrs</span>
+                      </strong>
+                      <span className="text-[10px] text-slate-400">Sumatoria anual PE-04</span>
+                    </div>
+
+                    <div className="p-3 bg-white rounded-lg border border-slate-200 shadow-2xs">
+                      <span className="text-slate-500 block text-[10px] font-bold uppercase tracking-wider">Promedio Mensual Dictado</span>
+                      <strong className="text-lg font-black text-slate-800 mt-0.5 block">
+                        {Math.round(monthlyFichasDetailedData.totalHoras / (monthlyFichasDetailedData.months.filter(m => m.fichas > 0).length || 1))} <span className="text-xs font-medium text-slate-500">hrs/mes activo</span>
+                      </strong>
+                      <span className="text-[10px] text-slate-400">En meses con asignación</span>
+                    </div>
+
+                    <div className="p-3 bg-white rounded-lg border border-slate-200 shadow-2xs">
+                      <span className="text-slate-500 block text-[10px] font-bold uppercase tracking-wider">Total Cursos / Fichas</span>
+                      <strong className="text-lg font-black text-slate-800 mt-0.5 block">
+                        {monthlyFichasDetailedData.totalFichas} <span className="text-xs font-medium text-slate-500">fichas</span>
+                      </strong>
+                      <span className="text-[10px] text-slate-400">{monthlyFichasDetailedData.months.reduce((a, b) => a + b.cursosEspeciales, 0)} cursos · {monthlyFichasDetailedData.months.reduce((a, b) => a + b.eventos, 0)} eventos</span>
+                    </div>
+
+                    <div className="p-3 bg-white rounded-lg border border-slate-200 shadow-2xs">
+                      <span className="text-slate-500 block text-[10px] font-bold uppercase tracking-wider">Aprendices Atendidos</span>
+                      <strong className="text-lg font-black text-slate-800 mt-0.5 block">
+                        {monthlyFichasDetailedData.totalMatriculados.toLocaleString('es-CO')} <span className="text-xs font-medium text-slate-500">apr.</span>
+                      </strong>
+                      <span className="text-[10px] text-slate-400">Total matriculados</span>
+                    </div>
                   </div>
 
                   <div className="overflow-x-auto">
                     <table className="w-full text-left text-xs bg-white rounded-lg border border-slate-200">
                       <thead className="bg-slate-100 text-slate-700 uppercase text-[10px] font-bold border-b border-slate-200">
                         <tr>
-                          <th className="px-3 py-2">Mes</th>
-                          <th className="px-3 py-2 text-center">Fichas Asignadas</th>
-                          <th className="px-3 py-2 text-center">Cursos Especiales</th>
-                          <th className="px-3 py-2 text-center">Eventos</th>
-                          <th className="px-3 py-2 text-center">Aprendices</th>
-                          <th className="px-3 py-2 text-center">Horas Dictadas</th>
-                          <th className="px-3 py-2 text-center">Estado</th>
+                          <th className="px-3 py-2.5">Mes</th>
+                          <th className="px-3 py-2.5 text-center">Fichas Asignadas</th>
+                          <th className="px-3 py-2.5 text-center">Cursos Especiales</th>
+                          <th className="px-3 py-2.5 text-center">Eventos</th>
+                          <th className="px-3 py-2.5 text-center">Aprendices</th>
+                          <th className="px-3 py-2.5 text-center bg-emerald-50/80 text-emerald-900 font-bold border-x border-emerald-200/60">
+                            Horas Dictadas (Col. AW TOTAL_HORAS)
+                          </th>
+                          <th className="px-3 py-2.5 text-center">Estado</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
                         {monthlyFichasDetailedData.months.map((m) => (
-                          <tr key={m.month} className="hover:bg-slate-50">
-                            <td className="px-3 py-2 font-semibold text-slate-800">{m.fullMonth}</td>
-                            <td className="px-3 py-2 text-center font-bold text-slate-800">
+                          <tr key={m.month} className="hover:bg-slate-50 transition-colors">
+                            <td className="px-3 py-2.5 font-semibold text-slate-800">{m.fullMonth}</td>
+                            <td className="px-3 py-2.5 text-center font-bold text-slate-800">
                               {m.fichas > 0 ? (
-                                <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[11px]">
+                                <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[11px] font-bold">
                                   {m.fichas} fichas
                                 </span>
                               ) : (
-                                <span className="text-slate-400">0</span>
+                                <span className="text-slate-300 font-normal">0</span>
                               )}
                             </td>
-                            <td className="px-3 py-2 text-center text-slate-600">{m.cursosEspeciales || '-'}</td>
-                            <td className="px-3 py-2 text-center text-slate-600">{m.eventos || '-'}</td>
-                            <td className="px-3 py-2 text-center font-medium text-slate-800">
+                            <td className="px-3 py-2.5 text-center text-slate-600 font-medium">{m.cursosEspeciales || '-'}</td>
+                            <td className="px-3 py-2.5 text-center text-slate-600 font-medium">{m.eventos || '-'}</td>
+                            <td className="px-3 py-2.5 text-center font-medium text-slate-800">
                               {m.matriculados > 0 ? m.matriculados.toLocaleString('es-CO') : '-'}
                             </td>
-                            <td className="px-3 py-2 text-center text-slate-600">
+                            <td className="px-3 py-2.5 text-center bg-emerald-50/40 border-x border-emerald-100 font-mono font-bold text-emerald-800">
                               {m.horasTotales > 0 ? `${m.horasTotales.toLocaleString('es-CO')} hrs` : '-'}
                             </td>
-                            <td className="px-3 py-2 text-center">
+                            <td className="px-3 py-2.5 text-center">
                               {m.fichas > 0 ? (
-                                <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full">
+                                <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
                                   <CheckCircle2 className="w-3 h-3" /> Activo
                                 </span>
                               ) : (
@@ -2103,6 +2158,31 @@ export default function AnalisisComplementariaView({}: AnalisisComplementariaVie
                           </tr>
                         ))}
                       </tbody>
+                      <tfoot className="bg-slate-100/90 text-slate-900 border-t-2 border-slate-300 font-bold text-[11px]">
+                        <tr>
+                          <td className="px-3 py-2.5 uppercase tracking-wider text-slate-800">
+                            Total Acumulado Anual
+                          </td>
+                          <td className="px-3 py-2.5 text-center text-emerald-900 font-black">
+                            {monthlyFichasDetailedData.totalFichas} fichas
+                          </td>
+                          <td className="px-3 py-2.5 text-center text-slate-700">
+                            {monthlyFichasDetailedData.months.reduce((a, b) => a + b.cursosEspeciales, 0)}
+                          </td>
+                          <td className="px-3 py-2.5 text-center text-slate-700">
+                            {monthlyFichasDetailedData.months.reduce((a, b) => a + b.eventos, 0)}
+                          </td>
+                          <td className="px-3 py-2.5 text-center text-slate-900 font-black">
+                            {monthlyFichasDetailedData.totalMatriculados.toLocaleString('es-CO')}
+                          </td>
+                          <td className="px-3 py-2.5 text-center bg-emerald-100 text-emerald-900 font-mono font-black border-x border-emerald-300 text-xs">
+                            {monthlyFichasDetailedData.totalHoras.toLocaleString('es-CO')} hrs
+                          </td>
+                          <td className="px-3 py-2.5 text-center text-emerald-700">
+                            {monthlyFichasDetailedData.months.filter(m => m.fichas > 0).length} meses activos
+                          </td>
+                        </tr>
+                      </tfoot>
                     </table>
                   </div>
                 </div>
@@ -2116,6 +2196,13 @@ export default function AnalisisComplementariaView({}: AnalisisComplementariaVie
             selectedInstructor={selectedInstructor}
             onSelectInstructor={(inst) => setSelectedInstructor(inst)}
             onViewFichaDetail={(f) => setSelectedFichaDetail(f)}
+          />
+
+          {/* ANÁLISIS POR PROGRAMAS ESPECIALES (AULA MÓVIL, CAMPESENA, FEC CONSTRUCCIÓN, FEC PLACA HUELLA, FULL POPULAR, EMPRENDIMIENTO) */}
+          <SpecialProgramsAnalysisView
+            fichas={fichasComp}
+            onViewFichaDetail={(f) => setSelectedFichaDetail(f)}
+            onSelectInstructor={(inst) => setSelectedInstructor(inst)}
           />
         </div>
       )}
@@ -2296,8 +2383,8 @@ export default function AnalisisComplementariaView({}: AnalisisComplementariaVie
                   <th className="py-3 px-4">Instructor / Responsable</th>
                   <th className="py-3 px-3 text-center">Cursos / Fichas</th>
                   <th className="py-3 px-3 text-center">Aprendices Matriculados</th>
-                  <th className="py-3 px-3 text-center">Activos / Certificados</th>
-                  <th className="py-3 px-3 text-center">Horas Docente</th>
+                  <th className="py-3 px-3 text-center">Aprendices Certificados</th>
+                  <th className="py-3 px-3 text-center">Horas Dictadas (Col. AW)</th>
                   <th className="py-3 px-3 text-center">Horas Hombre</th>
                   <th className="py-3 px-3">Líneas Temáticas</th>
                   <th className="py-3 px-3">Municipios Atendidos</th>
@@ -2315,8 +2402,8 @@ export default function AnalisisComplementariaView({}: AnalisisComplementariaVie
                     <td className="py-3 px-3 text-center font-bold text-emerald-700">
                       {inst.matriculados.toLocaleString('es-CO')}
                     </td>
-                    <td className="py-3 px-3 text-center font-medium text-slate-700">
-                      {(inst.activos + inst.certificados).toLocaleString('es-CO')}
+                    <td className="py-3 px-3 text-center font-semibold text-emerald-700">
+                      {inst.certificados.toLocaleString('es-CO')}
                     </td>
                     <td className="py-3 px-3 text-center font-mono font-semibold text-slate-700">
                       {inst.horasDocente} hrs
@@ -2368,7 +2455,7 @@ export default function AnalisisComplementariaView({}: AnalisisComplementariaVie
                   <th className="py-3 px-3">Departamento</th>
                   <th className="py-3 px-3 text-center">Fichas / Cursos</th>
                   <th className="py-3 px-3 text-center">Aprendices Matriculados</th>
-                  <th className="py-3 px-3 text-center">Activos / Certificados</th>
+                  <th className="py-3 px-3 text-center">Aprendices Certificados</th>
                   <th className="py-3 px-3 text-center">Horas Hombre</th>
                   <th className="py-3 px-3">Empresas / Aliados</th>
                 </tr>
@@ -2388,8 +2475,8 @@ export default function AnalisisComplementariaView({}: AnalisisComplementariaVie
                     <td className="py-3 px-3 text-center font-bold text-sky-700">
                       {mun.matriculados.toLocaleString('es-CO')}
                     </td>
-                    <td className="py-3 px-3 text-center font-medium text-slate-700">
-                      {(mun.activos + mun.certificados).toLocaleString('es-CO')}
+                    <td className="py-3 px-3 text-center font-semibold text-emerald-700">
+                      {mun.certificados.toLocaleString('es-CO')}
                     </td>
                     <td className="py-3 px-3 text-center font-mono text-slate-600">
                       {mun.horasHombre.toLocaleString('es-CO')}
@@ -2472,6 +2559,199 @@ export default function AnalisisComplementariaView({}: AnalisisComplementariaVie
                   ))}
                 </tbody>
               </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* VIEW: CARGAR ARCHIVO Y SINCRONIZACIÓN GOOGLE DRIVE */}
+      {activeSubTab === 'cargar' && (
+        <div className="space-y-6 animate-fadeIn">
+          {/* Card 1: Sincronización Google Drive */}
+          <div className="bg-white rounded-xl shadow-xs border border-slate-200 overflow-hidden">
+            <div className="p-5 border-b border-slate-100 bg-emerald-50/50 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-emerald-100 text-emerald-700 rounded-lg">
+                  <RefreshCw className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-800">
+                    Sincronización Directa con Google Drive
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Conexión directa a la carpeta compartida de Google Drive para descargar e integrar en tiempo real el reporte PE-04.
+                  </p>
+                </div>
+              </div>
+              <span className="px-3 py-1 bg-emerald-100 text-emerald-800 text-xs font-semibold rounded-full border border-emerald-200 flex items-center gap-1.5">
+                <ShieldCheck className="w-3.5 h-3.5" /> Conexión Activa
+              </span>
+            </div>
+
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+                  URL de la Carpeta o Archivo de Google Drive:
+                </label>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <input
+                    type="text"
+                    id="input-drive-folder-url"
+                    value={driveFolderInput}
+                    onChange={(e) => setDriveFolderInput(e.target.value)}
+                    placeholder="https://drive.google.com/drive/folders/..."
+                    className="flex-1 px-3.5 py-2 text-xs text-slate-800 bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white transition-all font-mono"
+                  />
+                  <button
+                    id="btn-revert-drive-url"
+                    type="button"
+                    onClick={() => setDriveFolderInput(DRIVE_FOLDER_URL)}
+                    className="px-3 py-2 text-xs font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded-lg transition-colors whitespace-nowrap"
+                  >
+                    Restablecer URL Oficial
+                  </button>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex flex-wrap items-center gap-3 pt-2">
+                <button
+                  id="btn-trigger-drive-sync"
+                  type="button"
+                  onClick={() => handleSyncFromDrive(false, false, driveFolderInput)}
+                  disabled={isSyncing}
+                  className={`inline-flex items-center gap-2 px-5 py-2.5 text-sm font-semibold rounded-lg text-white shadow-xs transition-all ${
+                    isSyncing
+                      ? 'bg-slate-400 cursor-not-allowed'
+                      : 'bg-emerald-600 hover:bg-emerald-700 active:scale-95'
+                  }`}
+                >
+                  <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
+                  {isSyncing ? 'Sincronizando desde Google Drive...' : 'Sincronizar Ahora con Drive'}
+                </button>
+
+                <button
+                  id="btn-force-drive-refresh"
+                  type="button"
+                  onClick={() => handleSyncFromDrive(false, true, driveFolderInput)}
+                  disabled={isSyncing}
+                  className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-semibold rounded-lg text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-300 shadow-xs transition-all active:scale-95"
+                  title="Elimina la caché local y vuelve a consultar la información más fresca de Google Drive"
+                >
+                  <RotateCcw className={`w-4 h-4 text-emerald-600 ${isSyncing ? 'animate-spin' : ''}`} />
+                  Forzar Actualización (Limpiar Caché)
+                </button>
+
+                <a
+                  href={driveFolderInput || DRIVE_FOLDER_URL}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium text-slate-600 hover:text-slate-900 border border-slate-200 rounded-lg bg-white hover:bg-slate-50 transition-colors"
+                >
+                  <ExternalLink className="w-4 h-4 text-slate-500" />
+                  Abrir Carpeta en Google Drive
+                </a>
+              </div>
+
+              {/* Sync Status Banner */}
+              <div className="mt-4 p-4 rounded-xl bg-slate-50 border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4 text-xs">
+                <div>
+                  <span className="text-slate-500 block">Fuente actual de datos:</span>
+                  <strong className="text-slate-800 text-sm font-bold">{syncInfo?.source || 'Google Drive PE-04'}</strong>
+                </div>
+                <div>
+                  <span className="text-slate-500 block">Archivo procesado:</span>
+                  <strong className="text-slate-800 font-mono">{syncInfo?.fileName || 'PE-04_1.xml'}</strong>
+                </div>
+                <div>
+                  <span className="text-slate-500 block">Última sincronización:</span>
+                  <strong className="text-slate-800">{syncInfo?.syncDate || 'Hoy'}</strong>
+                </div>
+                <div>
+                  <span className="text-slate-500 block">Total registros PE-04:</span>
+                  <strong className="text-emerald-700 text-sm font-bold">{fichasComp.length.toLocaleString('es-CO')} registros</strong>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Card 2: Carga Manual de Archivo */}
+          <div className="bg-white rounded-xl shadow-xs border border-slate-200 overflow-hidden">
+            <div className="p-5 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-sky-100 text-sky-700 rounded-lg">
+                  <Upload className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-800">
+                    Carga Manual de Archivo PE-04
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    También puede subir directamente un archivo exportado de Sofía Plus en formato XML Spreadsheet, XLSX o XLS.
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleDownloadTemplate}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-sky-700 bg-sky-50 hover:bg-sky-100 border border-sky-200 rounded-lg transition-colors"
+              >
+                <Download className="w-3.5 h-3.5" />
+                Descargar Plantilla
+              </button>
+            </div>
+
+            <div className="p-6">
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleFileUpload}
+                accept=".xlsx,.xls,.xml,.csv"
+                className="hidden"
+                id="file-upload-complementaria-manual"
+              />
+
+              <div
+                onClick={() => fileInputRef.current?.click()}
+                className="border-2 border-dashed border-slate-300 hover:border-emerald-500 rounded-2xl p-8 text-center cursor-pointer bg-slate-50/50 hover:bg-emerald-50/30 transition-all group"
+              >
+                <div className="w-14 h-14 mx-auto mb-3 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center group-hover:scale-110 transition-transform">
+                  <FileSpreadsheet className="w-7 h-7" />
+                </div>
+                <h4 className="text-sm font-bold text-slate-800">
+                  Haga clic para seleccionar o arrastre el archivo PE-04 aquí
+                </h4>
+                <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
+                  Formatos soportados: XML Spreadsheet 2003 (.xml), Excel (.xlsx, .xls) generados por el reporte PE-04 de Sofía Plus.
+                </p>
+                <div className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-700 shadow-2xs group-hover:border-emerald-400">
+                  <Upload className="w-4 h-4 text-emerald-600" />
+                  Examinar archivos de mi equipo
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Card 3: Reglas de Filtrado & Cobertura */}
+          <div className="bg-slate-50 rounded-xl p-5 border border-slate-200 text-xs space-y-3">
+            <h4 className="font-bold text-slate-800 flex items-center gap-2 text-sm">
+              <BookOpen className="w-4 h-4 text-emerald-600" />
+              Criterios de Extracción y Clasificación PE-04
+            </h4>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-slate-600">
+              <div className="p-3 bg-white rounded-lg border border-slate-200">
+                <strong className="text-emerald-700 block mb-1">1. CURSO ESPECIAL (Formación Complementaria)</strong>
+                <p>
+                  Cursos de formación complementaria corta orientados al desarrollo o actualización de competencias laborales específicas.
+                </p>
+              </div>
+              <div className="p-3 bg-white rounded-lg border border-slate-200">
+                <strong className="text-purple-700 block mb-1">2. EVENTO (Evento de Divulgación Tecnológica)</strong>
+                <p>
+                  Jornadas, seminarios y eventos de divulgación y transferencia tecnológica para la comunidad y empresas.
+                </p>
+              </div>
             </div>
           </div>
         </div>
@@ -2574,8 +2854,8 @@ export default function AnalisisComplementariaView({}: AnalisisComplementariaVie
                   <strong className="text-sm text-rose-700">{selectedFichaDetail.femeninos || 0}</strong>
                 </div>
                 <div className="p-2 bg-slate-50 rounded-lg">
-                  <span className="text-slate-500 block text-[10px]">Activos</span>
-                  <strong className="text-sm text-emerald-700">{selectedFichaDetail.activos || selectedFichaDetail.certificados}</strong>
+                  <span className="text-slate-500 block text-[10px]">Certificados</span>
+                  <strong className="text-sm text-emerald-700">{selectedFichaDetail.certificados}</strong>
                 </div>
               </div>
             </div>

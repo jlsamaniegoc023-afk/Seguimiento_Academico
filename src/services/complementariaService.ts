@@ -5,8 +5,8 @@ import { INITIAL_COMPLEMENTARIA_DATA, COMPLEMENTARIA_DRIVE_FOLDER_URL, COMPLEMEN
 export const DRIVE_FOLDER_URL = COMPLEMENTARIA_DRIVE_FOLDER_URL;
 export const DRIVE_FILE_ID = COMPLEMENTARIA_DRIVE_FILE_ID;
 
-const STORAGE_KEY = 'sena_analisis_complementaria_data_v2';
-const STORAGE_SYNC_KEY = 'sena_analisis_complementaria_sync_info_v2';
+const STORAGE_KEY = 'sena_analisis_complementaria_data_v6';
+const STORAGE_SYNC_KEY = 'sena_analisis_complementaria_sync_info_v6';
 
 export interface SyncInfo {
   source: string;
@@ -15,6 +15,63 @@ export interface SyncInfo {
   fileName?: string;
   status: 'synced' | 'error' | 'local' | 'cached';
   error?: string;
+}
+
+export function getDF14FichaMap(): Map<string, { certificados: number; porCertificar: number; enFormacion?: number; desertores?: number }> {
+  const map = new Map<string, { certificados: number; porCertificar: number; enFormacion?: number; desertores?: number }>();
+  
+  // 1. From INITIAL_COMPLEMENTARIA_DATA
+  INITIAL_COMPLEMENTARIA_DATA.forEach(f => {
+    if (f.ficha) {
+      map.set(f.ficha.trim(), {
+        certificados: f.certificados || 0,
+        porCertificar: f.porCertificar || 0,
+        enFormacion: f.enFormacion || 0,
+        desertores: f.desertores || 0
+      });
+    }
+  });
+
+  // 2. From localStorage DF-14 parsed data if available in browser
+  try {
+    const rawDF14 = localStorage.getItem('sena_df14_xml_parsed_data');
+    if (rawDF14) {
+      const parsed = JSON.parse(rawDF14);
+      if (Array.isArray(parsed)) {
+        parsed.forEach((d: any) => {
+          if (d.ficha) {
+            map.set(String(d.ficha).trim(), {
+              certificados: Number(d.certificados) || 0,
+              porCertificar: Number(d.porCertificar) || 0,
+              enFormacion: Number(d.enFormacion) || 0,
+              desertores: Number(d.desertores || d.cancelado) || 0
+            });
+          }
+        });
+      }
+    }
+  } catch (e) {
+    console.warn('Error reading DF14 data from localStorage:', e);
+  }
+
+  return map;
+}
+
+export function clearComplementariaCache(): void {
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(STORAGE_SYNC_KEY);
+    localStorage.removeItem('sena_analisis_complementaria_data_v5');
+    localStorage.removeItem('sena_analisis_complementaria_sync_info_v5');
+    localStorage.removeItem('sena_analisis_complementaria_data_v4');
+    localStorage.removeItem('sena_analisis_complementaria_sync_info_v4');
+    localStorage.removeItem('sena_analisis_complementaria_data_v3');
+    localStorage.removeItem('sena_analisis_complementaria_sync_info_v3');
+    localStorage.removeItem('sena_analisis_complementaria_data_v2');
+    localStorage.removeItem('sena_analisis_complementaria_sync_info_v2');
+  } catch (e) {
+    console.warn('Error clearing complementaria cache:', e);
+  }
 }
 
 export function getCachedComplementaria(): { data: FichaComplementaria[]; syncInfo: SyncInfo | null } {
@@ -37,7 +94,7 @@ export function getCachedComplementaria(): { data: FichaComplementaria[]; syncIn
   return {
     data: INITIAL_COMPLEMENTARIA_DATA,
     syncInfo: {
-      source: 'Google Drive (PE-04 Centro Minero)',
+      source: 'Google Drive PE-04 (Centro Minero)',
       syncDate: new Date().toLocaleString('es-CO'),
       totalRecords: INITIAL_COMPLEMENTARIA_DATA.length,
       fileName: 'PE-04_1.xml',
@@ -181,24 +238,45 @@ export function parseComplementariaWorkbook(wb: XLSX.WorkBook, sourceLabel: stri
     const fem = Number(getColVal(r, ['TOTAL_APRENDICES_FEMENINOS', 'FEMENINOS', 'MUJERES'])) || 0;
     const noBin = Number(getColVal(r, ['TOTAL_APRENDICES_NOBINARIO', 'NO_BINARIO'])) || 0;
 
-    // Horas
-    const hPlanta = Number(getColVal(r, ['HORAS_PLANTA'])) || 0;
-    const hContratistas = Number(getColVal(r, ['HORAS_CONTRATISTAS'])) || 0;
-    const hTotales = Number(getColVal(r, ['TOTAL_HORAS'])) || duracion;
+    // Helper to parse Sofía Plus XML hour day fractions or integer hours
+    const parseSofiaPlusHours = (rawVal: any, fallback = 0): number => {
+      if (rawVal === undefined || rawVal === null || rawVal === '') return fallback;
+      const num = typeof rawVal === 'number' ? rawVal : Number(String(rawVal).replace(',', '.'));
+      if (isNaN(num) || num <= 0) return fallback;
+      if (num < 100 && (!Number.isInteger(num) || num <= 15)) {
+        return Math.round(num * 24 * 10) / 10;
+      }
+      return Math.round(num * 10) / 10;
+    };
 
-    // Certificados / Retiros
+    // Horas (AR: HORAS_PLANTA, AS: HORAS_CONTRATISTAS, AW: TOTAL_HORAS)
+    const rawPlanta = getColVal(r, ['HORAS_PLANTA']);
+    const rawContratistas = getColVal(r, ['HORAS_CONTRATISTAS']);
+    const rawTotalHoras = getColVal(r, ['TOTAL_HORAS', 'HORAS_TOTALES', 'TOTALHORAS']);
+
+    const hPlanta = parseSofiaPlusHours(rawPlanta, 0);
+    const hContratistas = parseSofiaPlusHours(rawContratistas, 0);
+    const hTotales = parseSofiaPlusHours(rawTotalHoras, hPlanta + hContratistas || duracion);
+
+    // DF-14A Cross-reference for Column AH (POR_CERTIFICAR) and Column AI (CERTIFICADO)
+    const df14Map = getDF14FichaMap();
+    const df14Match = df14Map.get(ficha);
+
     let certificados = 0;
-    let desertores = 0;
+    let porCertificar = 0;
     let enFormacion = 0;
+    let desertores = 0;
 
-    const isTerminada = /terminad/i.test(estado);
-    if (isTerminada) {
-      certificados = activos > 0 ? activos : Math.max(0, matriculados - 1);
-      desertores = Math.max(0, matriculados - certificados);
+    if (df14Match) {
+      certificados = df14Match.certificados;
+      porCertificar = df14Match.porCertificar;
+      enFormacion = df14Match.enFormacion || 0;
+      desertores = df14Match.desertores || 0;
     } else {
-      enFormacion = activos > 0 ? activos : matriculados;
       certificados = 0;
-      desertores = Math.max(0, matriculados - enFormacion);
+      porCertificar = 0;
+      enFormacion = 0;
+      desertores = Math.max(0, matriculados - certificados);
     }
 
     results.push({
@@ -238,7 +316,7 @@ export function parseComplementariaWorkbook(wb: XLSX.WorkBook, sourceLabel: stri
       noBinario: noBin,
       activos: activos,
       certificados: certificados,
-      porCertificar: Math.max(0, matriculados - certificados - desertores),
+      porCertificar: porCertificar,
       enFormacion: enFormacion,
       desertores: desertores,
       cancelados: 0,
@@ -253,7 +331,7 @@ export function parseComplementariaWorkbook(wb: XLSX.WorkBook, sourceLabel: stri
   return results;
 }
 
-export async function fetchComplementariaFromDrive(customFolderUrl?: string): Promise<{ data: FichaComplementaria[]; syncInfo: SyncInfo }> {
+export async function fetchComplementariaFromDrive(customFolderUrl?: string, forceRefresh: boolean = false): Promise<{ data: FichaComplementaria[]; syncInfo: SyncInfo }> {
   let fileId = DRIVE_FILE_ID;
   let folderId = '1DqBcInloI9_V2P4g4LxJMum1F5ZDJJ0y';
   const targetUrl = customFolderUrl || DRIVE_FOLDER_URL;
@@ -271,9 +349,9 @@ export async function fetchComplementariaFromDrive(customFolderUrl?: string): Pr
   let wb: XLSX.WorkBook | null = null;
   let syncSource = `Google Drive Folder (${folderId})`;
 
-  // 1. Intento vía proxy de Vite / backend
+  // 1. Intento vía proxy de Vite / backend con timestamp para evitar caché HTTP
   try {
-    const proxyUrl = `/api/drive-complementaria?folderId=${encodeURIComponent(folderId)}&fileId=${encodeURIComponent(fileId)}&url=${encodeURIComponent(targetUrl)}`;
+    const proxyUrl = `/api/drive-complementaria?folderId=${encodeURIComponent(folderId)}&fileId=${encodeURIComponent(fileId)}&url=${encodeURIComponent(targetUrl)}&_t=${Date.now()}`;
     const resp = await fetch(proxyUrl);
     if (resp.ok) {
       const buffer = await resp.arrayBuffer();
@@ -288,7 +366,7 @@ export async function fetchComplementariaFromDrive(customFolderUrl?: string): Pr
   // 2. Intento directo Google Drive usercontent download
   if (!wb || !wb.SheetNames || wb.SheetNames.length === 0) {
     try {
-      const driveDirectUrl = `https://drive.usercontent.google.com/download?id=${fileId}&export=download&confirm=t`;
+      const driveDirectUrl = `https://drive.usercontent.google.com/download?id=${fileId}&export=download&confirm=t&_t=${Date.now()}`;
       const resp = await fetch(driveDirectUrl);
       if (resp.ok) {
         const buffer = await resp.arrayBuffer();

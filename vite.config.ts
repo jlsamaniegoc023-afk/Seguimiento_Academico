@@ -133,33 +133,94 @@ export default defineConfig(() => {
             }
             try {
               const urlObj = new URL(rawUrl, `http://${req.headers.host || 'localhost'}`);
-              let fileId = urlObj.searchParams.get('fileId') || '1VyXGzt3xxxodjAmeWRtXEYCjxVmrt5uE';
+              let fileId = urlObj.searchParams.get('fileId') || '';
               const folderId = urlObj.searchParams.get('folderId') || '';
               const driveUrl = urlObj.searchParams.get('url') || '';
 
               if (folderId === '1DqBcInloI9_V2P4g4LxJMum1F5ZDJJ0y' || driveUrl.includes('1DqBcInloI9_V2P4g4LxJMum1F5ZDJJ0y')) {
-                fileId = '1VyXGzt3xxxodjAmeWRtXEYCjxVmrt5uE';
-              }
-
-              const driveDownloadUrl = `https://drive.usercontent.google.com/download?id=${fileId}&export=download&confirm=t`;
-              let response = await fetch(driveDownloadUrl);
-              
-              if (!response.ok) {
-                // Fallback to docs sheets export if applicable
-                const fallbackUrl = `https://docs.google.com/spreadsheets/d/${fileId}/export?format=xlsx`;
-                const fbRes = await fetch(fallbackUrl);
-                if (fbRes.ok) {
-                  response = fbRes;
+                fileId = '1vd9fjIM7sYBlFg6hpLIWK03SdO_iLn8O';
+              } else if (!fileId && folderId) {
+                // Dynamically resolve file ID inside Google Drive folder
+                try {
+                  const folderRes = await fetch(`https://drive.google.com/drive/folders/${folderId}?usp=sharing`, {
+                    headers: { 'User-Agent': 'Mozilla/5.0' }
+                  });
+                  if (folderRes.ok) {
+                    const html = await folderRes.text();
+                    const match = html.match(/"([a-zA-Z0-9_-]{28,45})".*?"([^"]+\.(?:xlsx|xls|xml|csv|sheet))"/i);
+                    if (match && match[1]) {
+                      fileId = match[1];
+                    }
+                  }
+                } catch (e) {
+                  console.warn('Error resolviendo carpeta de Complementaria:', e);
                 }
               }
 
-              if (!response.ok) {
-                res.statusCode = response.status;
+              if (!fileId) {
+                fileId = '1vd9fjIM7sYBlFg6hpLIWK03SdO_iLn8O';
+              }
+
+              let arrayBuf: ArrayBuffer | null = null;
+
+              // Download Attempt 1: drive.usercontent.google.com
+              try {
+                const driveDownloadUrl = `https://drive.usercontent.google.com/download?id=${fileId}&export=download&confirm=t`;
+                const response = await fetch(driveDownloadUrl, {
+                  headers: { 'User-Agent': 'Mozilla/5.0' }
+                });
+                if (response.ok) {
+                  const buf = await response.arrayBuffer();
+                  if (buf.byteLength > 1000) {
+                    arrayBuf = buf;
+                  }
+                }
+              } catch (e) {
+                console.warn('Fallo intento 1 drive.usercontent:', e);
+              }
+
+              // Download Attempt 2: docs.google.com/spreadsheets/export
+              if (!arrayBuf) {
+                try {
+                  const fallbackUrl = `https://docs.google.com/spreadsheets/d/${fileId}/export?format=xlsx`;
+                  const fbRes = await fetch(fallbackUrl, {
+                    headers: { 'User-Agent': 'Mozilla/5.0' }
+                  });
+                  if (fbRes.ok) {
+                    const buf = await fbRes.arrayBuffer();
+                    if (buf.byteLength > 1000) {
+                      arrayBuf = buf;
+                    }
+                  }
+                } catch (e) {
+                  console.warn('Fallo intento 2 docs export:', e);
+                }
+              }
+
+              // Download Attempt 3: drive.google.com/uc
+              if (!arrayBuf) {
+                try {
+                  const ucUrl = `https://drive.google.com/uc?export=download&id=${fileId}`;
+                  const ucRes = await fetch(ucUrl, {
+                    headers: { 'User-Agent': 'Mozilla/5.0' }
+                  });
+                  if (ucRes.ok) {
+                    const buf = await ucRes.arrayBuffer();
+                    if (buf.byteLength > 1000) {
+                      arrayBuf = buf;
+                    }
+                  }
+                } catch (e) {
+                  console.warn('Fallo intento 3 drive uc:', e);
+                }
+              }
+
+              if (!arrayBuf) {
+                res.statusCode = 502;
                 res.end(JSON.stringify({ error: 'No se pudo descargar el reporte PE-04 de Formación Complementaria desde Google Drive.' }));
                 return;
               }
 
-              const arrayBuf = await response.arrayBuffer();
               res.setHeader('Content-Type', 'application/vnd.ms-excel; charset=utf-8');
               res.setHeader('Content-Length', arrayBuf.byteLength.toString());
               res.end(Buffer.from(arrayBuf));
