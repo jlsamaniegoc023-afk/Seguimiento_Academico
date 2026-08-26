@@ -137,8 +137,8 @@ export default defineConfig(() => {
               const folderId = urlObj.searchParams.get('folderId') || '';
               const driveUrl = urlObj.searchParams.get('url') || '';
 
-              if (folderId === '1DqBcInloI9_V2P4g4LxJMum1F5ZDJJ0y' || driveUrl.includes('1DqBcInloI9_V2P4g4LxJMum1F5ZDJJ0y')) {
-                fileId = '1vd9fjIM7sYBlFg6hpLIWK03SdO_iLn8O';
+              if (folderId === '1DqBcInloI9_V2P4g4LxJMum1F5ZDJJ0y' || driveUrl.includes('1DqBcInloI9_V2P4g4LxJMum1F5ZDJJ0y') || !fileId) {
+                fileId = '1DXgCIl7sPWS48cVk1S645Ra6qJ1nktDS';
               } else if (!fileId && folderId) {
                 // Dynamically resolve file ID inside Google Drive folder
                 try {
@@ -158,7 +158,7 @@ export default defineConfig(() => {
               }
 
               if (!fileId) {
-                fileId = '1vd9fjIM7sYBlFg6hpLIWK03SdO_iLn8O';
+                fileId = '1DXgCIl7sPWS48cVk1S645Ra6qJ1nktDS';
               }
 
               let arrayBuf: ArrayBuffer | null = null;

@@ -5,8 +5,8 @@ import { INITIAL_COMPLEMENTARIA_DATA, COMPLEMENTARIA_DRIVE_FOLDER_URL, COMPLEMEN
 export const DRIVE_FOLDER_URL = COMPLEMENTARIA_DRIVE_FOLDER_URL;
 export const DRIVE_FILE_ID = COMPLEMENTARIA_DRIVE_FILE_ID;
 
-const STORAGE_KEY = 'sena_analisis_complementaria_data_v6';
-const STORAGE_SYNC_KEY = 'sena_analisis_complementaria_sync_info_v6';
+const STORAGE_KEY = 'sena_analisis_complementaria_data_v7';
+const STORAGE_SYNC_KEY = 'sena_analisis_complementaria_sync_info_v7';
 
 export interface SyncInfo {
   source: string;
@@ -61,6 +61,8 @@ export function clearComplementariaCache(): void {
   try {
     localStorage.removeItem(STORAGE_KEY);
     localStorage.removeItem(STORAGE_SYNC_KEY);
+    localStorage.removeItem('sena_analisis_complementaria_data_v6');
+    localStorage.removeItem('sena_analisis_complementaria_sync_info_v6');
     localStorage.removeItem('sena_analisis_complementaria_data_v5');
     localStorage.removeItem('sena_analisis_complementaria_sync_info_v5');
     localStorage.removeItem('sena_analisis_complementaria_data_v4');

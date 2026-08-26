@@ -1,4 +1,4 @@
-﻿import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
   FichaComplementaria 
 } from '../types';
@@ -59,10 +59,10 @@ export interface ProgramConfig {
 export const SPECIAL_PROGRAMS_CONFIG: ProgramConfig[] = [
   {
     id: 'AULA_MOVIL',
-    name: 'AULA MÃ“VIL',
-    shortName: 'Aula MÃ³vil',
-    matchPattern: /AULA\s*M[OÃ“]VIL/i,
-    description: 'FormaciÃ³n mÃ³vil itinerante en vehÃ­culos adaptados para llevar tecnologÃ­a y capacitaciÃ³n tÃ©cnica a zonas rurales y apartadas.',
+    name: 'AULA MÓVIL',
+    shortName: 'Aula Móvil',
+    matchPattern: /AULA\s*M[OÓ]VIL/i,
+    description: 'Formación móvil itinerante en vehículos adaptados para llevar tecnología y capacitación técnica a zonas rurales y apartadas.',
     icon: Sparkles,
     badgeBg: 'bg-amber-100',
     badgeText: 'text-amber-800',
@@ -76,7 +76,7 @@ export const SPECIAL_PROGRAMS_CONFIG: ProgramConfig[] = [
     name: 'CAMPESENA',
     shortName: 'CampeSENA',
     matchPattern: /CAMPESENA|CAMPE\s*SENA/i,
-    description: 'Estrategia integral para el reconocimiento, formaciÃ³n, inclusiÃ³n y desarrollo productivo de la poblaciÃ³n campesina colombiana.',
+    description: 'Estrategia integral para el reconocimiento, formación, inclusión y desarrollo productivo de la población campesina colombiana.',
     icon: Sprout,
     badgeBg: 'bg-emerald-100',
     badgeText: 'text-emerald-800',
@@ -87,52 +87,52 @@ export const SPECIAL_PROGRAMS_CONFIG: ProgramConfig[] = [
   },
   {
     id: 'FEC_CONSTRUCCION',
-    name: 'FEC - FORMACIÃ“N ESPECIAL CAMPESINA - CONSTRUCCIÃ“N',
-    shortName: 'FEC ConstrucciÃ³n',
-    matchPattern: /FEC.*CONSTRUCCI[OÃ“]N/i,
-    description: 'FormaciÃ³n Especial Campesina en autoconstrucciÃ³n, mamposterÃ­a, mejoramiento de vivienda rural e infraestructura comunitaria.',
+    name: 'FEC - FORMACIÓN ESPECIAL CAMPESINA - CONSTRUCCIÓN',
+    shortName: 'FEC Construcción',
+    matchPattern: /FEC.*CONSTRUCCI[OÓ]N/i,
+    description: 'Formación Especial Campesina en autoconstrucción, mampostería, mejoramiento de vivienda rural e infraestructura comunitaria.',
     icon: Hammer,
     badgeBg: 'bg-orange-100',
     badgeText: 'text-orange-800',
     accentBorder: 'border-orange-500',
     accentBg: 'bg-orange-50',
     cardColor: 'orange',
-    category: 'Infraestructura & HÃ¡bitat Rural'
+    category: 'Infraestructura & Hábitat Rural'
   },
   {
     id: 'FEC_PLACA_HUELLA',
-    name: 'FEC - FORMACIÃ“N ESPECIAL CAMPESINA - PLACA HUELLA',
+    name: 'FEC - FORMACIÓN ESPECIAL CAMPESINA - PLACA HUELLA',
     shortName: 'FEC Placa Huella',
     matchPattern: /FEC.*PLACA\s*HUELLA/i,
-    description: 'CapacitaciÃ³n comunitaria para la construcciÃ³n de pavimentos en placa huella en vÃ­as terciarias y accesos veredales.',
+    description: 'Capacitación comunitaria para la construcción de pavimentos en placa huella en vías terciarias y accesos veredales.',
     icon: Route,
     badgeBg: 'bg-teal-100',
     badgeText: 'text-teal-800',
     accentBorder: 'border-teal-500',
     accentBg: 'bg-teal-50',
     cardColor: 'teal',
-    category: 'VÃ­as Terciarias & Transporte'
+    category: 'Vías Terciarias & Transporte'
   },
   {
     id: 'FULL_POPULAR',
     name: 'FULL POPULAR',
     shortName: 'Full Popular',
     matchPattern: /FULL\s*POPULAR/i,
-    description: 'Estrategia de atenciÃ³n directa a la economÃ­a popular, micro micronegocios, vendedores informales, artesanos y comerciantes independientes.',
+    description: 'Estrategia de atención directa a la economía popular, micro micronegocios, vendedores informales, artesanos y comerciantes independientes.',
     icon: Store,
     badgeBg: 'bg-purple-100',
     badgeText: 'text-purple-800',
     accentBorder: 'border-purple-500',
     accentBg: 'bg-purple-50',
     cardColor: 'purple',
-    category: 'EconomÃ­a Popular & Microempresas'
+    category: 'Economía Popular & Microempresas'
   },
   {
     id: 'PROGRAMA_DE_EMPRENDIMIENTO',
     name: 'PROGRAMA DE EMPRENDIMIENTO',
     shortName: 'Emprendimiento',
     matchPattern: /EMPRENDIMIENTO/i,
-    description: 'Fomento a la cultura emprendedora, formulaciÃ³n de modelos de negocio, innovaciÃ³n y fortalecimiento a unidades productivas.',
+    description: 'Fomento a la cultura emprendedora, formulación de modelos de negocio, innovación y fortalecimiento a unidades productivas.',
     icon: Lightbulb,
     badgeBg: 'bg-indigo-100',
     badgeText: 'text-indigo-800',
@@ -144,9 +144,9 @@ export const SPECIAL_PROGRAMS_CONFIG: ProgramConfig[] = [
   {
     id: 'ALIANZAS_ESTRATEGICAS',
     name: 'ALIANZAS ESTRATEGICAS',
-    shortName: 'Alianzas EstratÃ©gicas',
-    matchPattern: /ALIANZAS\s*ESTRAT[EÃ‰]GICAS/i,
-    description: 'FormaciÃ³n a la medida coordinada mediante convenios interinstitucionales con gremios, empresas y entidades pÃºblicas.',
+    shortName: 'Alianzas Estratégicas',
+    matchPattern: /ALIANZAS\s*ESTRAT[EÉ]GICAS/i,
+    description: 'Formación a la medida coordinada mediante convenios interinstitucionales con gremios, empresas y entidades públicas.',
     icon: Handshake,
     badgeBg: 'bg-sky-100',
     badgeText: 'text-sky-800',
@@ -158,30 +158,30 @@ export const SPECIAL_PROGRAMS_CONFIG: ProgramConfig[] = [
   {
     id: 'PROGRAMA_DE_BILINGUISMO',
     name: 'PROGRAMA DE BILINGUISMO',
-    shortName: 'BilingÃ¼ismo',
-    matchPattern: /BILING[UÃœ]ISMO|INGL[EÃ‰]S/i,
-    description: 'Cursos de competencias comunicativas en segunda lengua (inglÃ©s) para la competitividad laboral y educativa.',
+    shortName: 'Bilingüismo',
+    matchPattern: /BILING[UÜ]ISMO|INGL[EÉ]S/i,
+    description: 'Cursos de competencias comunicativas en segunda lengua (inglés) para la competitividad laboral y educativa.',
     icon: Globe,
     badgeBg: 'bg-blue-100',
     badgeText: 'text-blue-800',
     accentBorder: 'border-blue-500',
     accentBg: 'bg-blue-50',
     cardColor: 'blue',
-    category: 'Idiomas & GlobalizaciÃ³n'
+    category: 'Idiomas & Globalización'
   },
   {
     id: 'AMBIENTES_VIRTUALES',
     name: 'AMBIENTES VIRTUALES DE APRENDIZAJE',
     shortName: 'Ambientes Virtuales',
     matchPattern: /AMBIENTES\s*VIRTUALES|VIRTUAL/i,
-    description: 'FormaciÃ³n complementaria 100% virtual a travÃ©s de la plataforma LMS institucional de SofÃ­a Plus / Zajuna.',
+    description: 'Formación complementaria 100% virtual a través de la plataforma LMS institucional de Sofía Plus / Zajuna.',
     icon: Laptop,
     badgeBg: 'bg-cyan-100',
     badgeText: 'text-cyan-800',
     accentBorder: 'border-cyan-500',
     accentBg: 'bg-cyan-50',
     cardColor: 'cyan',
-    category: 'FormaciÃ³n Virtual'
+    category: 'Formación Virtual'
   }
 ];
 
@@ -505,7 +505,7 @@ export const SpecialProgramsAnalysisView: React.FC<SpecialProgramsAnalysisViewPr
       'JORNADA': f.jornada || 'MIXTA',
       'INSTRUCTOR': f.instructor || 'POR ASIGNAR',
       'MUNICIPIO': f.municipio || 'SOGAMOSO',
-      'DEPARTAMENTO': f.departamento || 'BOYACÃ',
+      'DEPARTAMENTO': f.departamento || 'BOYACÁ',
       'APRENDICES MATRICULADOS': f.matriculados || 0,
       'POR CERTIFICAR (COL AH DF-14A)': f.porCertificar || 0,
       'CERTIFICADOS (COL AI DF-14A)': f.certificados || 0,
@@ -537,10 +537,10 @@ export const SpecialProgramsAnalysisView: React.FC<SpecialProgramsAnalysisViewPr
               Estrategias Focalizadas & Poblacionales SENA
             </div>
             <h3 className="text-xl sm:text-2xl font-black tracking-tight text-white flex items-center gap-2.5">
-              AnÃ¡lisis por Programas Especiales
+              Análisis por Programas Especiales
             </h3>
             <p className="text-xs sm:text-sm text-slate-300 max-w-3xl leading-relaxed">
-              Monitoreo y evaluaciÃ³n especializada para <strong>Aula MÃ³vil</strong>, <strong>CampeSENA</strong>, <strong>FEC ConstrucciÃ³n</strong>, <strong>FEC Placa Huella</strong>, <strong>Full Popular</strong>, <strong>Programa de Emprendimiento</strong> y alianzas territoriales.
+              Monitoreo y evaluación especializada para <strong>Aula Móvil</strong>, <strong>CampeSENA</strong>, <strong>FEC Construcción</strong>, <strong>FEC Placa Huella</strong>, <strong>Full Popular</strong>, <strong>Programa de Emprendimiento</strong> y alianzas territoriales.
             </p>
           </div>
 
@@ -733,7 +733,7 @@ export const SpecialProgramsAnalysisView: React.FC<SpecialProgramsAnalysisViewPr
               </div>
               <div className="text-[10px] text-slate-500 mt-1 flex items-center gap-1">
                 <span>{activeProgStats.cursosEspeciales} Cursos</span>
-                {activeProgStats.eventos > 0 && <span>Â· {activeProgStats.eventos} Eventos</span>}
+                {activeProgStats.eventos > 0 && <span>· {activeProgStats.eventos} Eventos</span>}
               </div>
             </div>
 
@@ -747,7 +747,7 @@ export const SpecialProgramsAnalysisView: React.FC<SpecialProgramsAnalysisViewPr
                 {activeProgStats.totalMatriculados.toLocaleString('es-CO')}
               </div>
               <div className="text-[10px] text-sky-700 mt-1">
-                {activeProgStats.femeninos} M Â· {activeProgStats.masculinos} H
+                {activeProgStats.femeninos} M · {activeProgStats.masculinos} H
               </div>
             </div>
 
@@ -818,7 +818,7 @@ export const SpecialProgramsAnalysisView: React.FC<SpecialProgramsAnalysisViewPr
                 Consolidado Comparativo de Programas Especiales
               </h3>
               <p className="text-xs text-slate-500 mt-0.5">
-                DistribuciÃ³n de fichas, aprendices matriculados, por certificar (Col. AH) y certificados (Col. AI).
+                Distribución de fichas, aprendices matriculados, por certificar (Col. AH) y certificados (Col. AI).
               </p>
             </div>
 
@@ -850,7 +850,7 @@ export const SpecialProgramsAnalysisView: React.FC<SpecialProgramsAnalysisViewPr
                   </th>
                   <th className="px-3 py-3 text-center">Instructores</th>
                   <th className="px-3 py-3 text-center">Municipios</th>
-                  <th className="px-3 py-3 text-center">AcciÃ³n</th>
+                  <th className="px-3 py-3 text-center">Acción</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -1042,10 +1042,10 @@ export const SpecialProgramsAnalysisView: React.FC<SpecialProgramsAnalysisViewPr
               <div className="flex items-center justify-between">
                 <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-2">
                   <BookOpen className="w-4 h-4 text-emerald-600" />
-                  Programas de FormaciÃ³n y Cursos Ofertados
+                  Programas de Formación y Cursos Ofertados
                 </h4>
                 <span className="text-xs text-slate-500">
-                  {coursesCatalog.length} programas Ãºnicos
+                  {coursesCatalog.length} programas únicos
                 </span>
               </div>
 
@@ -1053,7 +1053,7 @@ export const SpecialProgramsAnalysisView: React.FC<SpecialProgramsAnalysisViewPr
                 <table className="w-full text-left text-xs bg-white rounded-lg border border-slate-200">
                   <thead className="bg-slate-100 text-slate-700 uppercase text-[10px] font-bold border-b border-slate-200">
                     <tr>
-                      <th className="px-3.5 py-2.5">Programa de FormaciÃ³n</th>
+                      <th className="px-3.5 py-2.5">Programa de Formación</th>
                       <th className="px-3 py-2.5 text-center">Fichas</th>
                       <th className="px-3 py-2.5 text-center">Matriculados</th>
                       <th className="px-3 py-2.5 text-center bg-amber-50 text-amber-900 border-x border-amber-200">
@@ -1066,7 +1066,7 @@ export const SpecialProgramsAnalysisView: React.FC<SpecialProgramsAnalysisViewPr
                         Horas (Col. AW)
                       </th>
                       <th className="px-3 py-2.5">Instructores Asignados</th>
-                      <th className="px-3 py-2.5">Municipios de ImparticiÃ³n</th>
+                      <th className="px-3 py-2.5">Municipios de Impartición</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -1104,13 +1104,13 @@ export const SpecialProgramsAnalysisView: React.FC<SpecialProgramsAnalysisViewPr
                           <td className="px-3 py-2.5 text-slate-600 max-w-xs">
                             <div className="line-clamp-2 text-[11px]" title={Array.from(c.instructores).join(', ')}>
                               {Array.from(c.instructores).slice(0, 3).join(', ')}
-                              {c.instructores.size > 3 && ` (+${c.instructores.size - 3} mÃ¡s)`}
+                              {c.instructores.size > 3 && ` (+${c.instructores.size - 3} más)`}
                             </div>
                           </td>
                           <td className="px-3 py-2.5 text-slate-600 max-w-xs">
                             <div className="line-clamp-2 text-[11px]" title={Array.from(c.municipios).join(', ')}>
                               {Array.from(c.municipios).slice(0, 3).join(', ')}
-                              {c.municipios.size > 3 && ` (+${c.municipios.size - 3} mÃ¡s)`}
+                              {c.municipios.size > 3 && ` (+${c.municipios.size - 3} más)`}
                             </div>
                           </td>
                         </tr>
@@ -1154,7 +1154,7 @@ export const SpecialProgramsAnalysisView: React.FC<SpecialProgramsAnalysisViewPr
                         Horas (Col. AW)
                       </th>
                       <th className="px-3 py-2.5">Municipios Atendidos</th>
-                      <th className="px-3 py-2.5 text-center">AcciÃ³n</th>
+                      <th className="px-3 py-2.5 text-center">Acción</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -1226,7 +1226,7 @@ export const SpecialProgramsAnalysisView: React.FC<SpecialProgramsAnalysisViewPr
               <div className="flex items-center justify-between">
                 <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-2">
                   <MapPin className="w-4 h-4 text-emerald-600" />
-                  Municipios y Cobertura GeogrÃ¡fica
+                  Municipios y Cobertura Geográfica
                 </h4>
                 <span className="text-xs text-slate-500">
                   {municipalitiesCoverage.length} municipios
@@ -1276,7 +1276,7 @@ export const SpecialProgramsAnalysisView: React.FC<SpecialProgramsAnalysisViewPr
                   Detalle de Fichas ({currentProgramFichas.length.toLocaleString('es-CO')})
                 </h4>
                 <p className="text-xs text-slate-500">
-                  PÃ¡gina {currentPage} de {totalPages || 1}
+                  Página {currentPage} de {totalPages || 1}
                 </p>
               </div>
 
@@ -1286,7 +1286,7 @@ export const SpecialProgramsAnalysisView: React.FC<SpecialProgramsAnalysisViewPr
                     <tr>
                       <th className="px-3.5 py-2.5">Ficha</th>
                       <th className="px-3.5 py-2.5">Estrategia Especial</th>
-                      <th className="px-3.5 py-2.5">Programa de FormaciÃ³n</th>
+                      <th className="px-3.5 py-2.5">Programa de Formación</th>
                       <th className="px-3 py-2.5">Instructor</th>
                       <th className="px-3 py-2.5">Municipio</th>
                       <th className="px-3 py-2.5 text-center">Matriculados</th>
@@ -1300,7 +1300,7 @@ export const SpecialProgramsAnalysisView: React.FC<SpecialProgramsAnalysisViewPr
                         Horas (Col. AW)
                       </th>
                       <th className="px-3 py-2.5 text-center">Estado</th>
-                      <th className="px-3 py-2.5 text-center">AcciÃ³n</th>
+                      <th className="px-3 py-2.5 text-center">Acción</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -1416,4 +1416,3 @@ export const SpecialProgramsAnalysisView: React.FC<SpecialProgramsAnalysisViewPr
     </div>
   );
 };
-

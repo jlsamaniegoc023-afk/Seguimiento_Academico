@@ -1,4 +1,4 @@
-﻿const XLSX = require('xlsx');
+const XLSX = require('xlsx');
 const fs = require('fs');
 
 async function buildData() {
@@ -37,10 +37,10 @@ async function buildData() {
   }
   console.log('DF-14A rows indexed:', df14Map.size);
 
-  // 2. Download PE-04
-  const fileId = '1vd9fjIM7sYBlFg6hpLIWK03SdO_iLn8O';
+  // 2. Download PE-04 from the user-specified Google Drive
+  const fileId = '1DXgCIl7sPWS48cVk1S645Ra6qJ1nktDS';
   const url = 'https://drive.usercontent.google.com/download?id=' + fileId + '&export=download&confirm=t';
-  console.log('Downloading live PE-04 from Google Drive...');
+  console.log('Downloading live PE-04 from Google Drive (1DXgCIl7sPWS48cVk1S645Ra6qJ1nktDS)...');
   const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
   const buf = await res.arrayBuffer();
   console.log('Downloaded bytes PE-04:', buf.byteLength);
@@ -217,8 +217,8 @@ async function buildData() {
 
   const fileContent = `import { FichaComplementaria } from '../types';
 
-export const COMPLEMENTARIA_DRIVE_FOLDER_URL = 'https://drive.google.com/drive/folders/1DqBcInloI9_V2P4g4LxJMum1F5ZDJJ0y?usp=sharing';
-export const COMPLEMENTARIA_DRIVE_FILE_ID = '1vd9fjIM7sYBlFg6hpLIWK03SdO_iLn8O';
+export const COMPLEMENTARIA_DRIVE_FOLDER_URL = 'https://docs.google.com/spreadsheets/d/1DXgCIl7sPWS48cVk1S645Ra6qJ1nktDS/edit?usp=sharing&ouid=115787826880979321096&rtpof=true&sd=true';
+export const COMPLEMENTARIA_DRIVE_FILE_ID = '1DXgCIl7sPWS48cVk1S645Ra6qJ1nktDS';
 
 export const INITIAL_COMPLEMENTARIA_DATA: FichaComplementaria[] = ` + JSON.stringify(results, null, 2) + `;\n`;
 
@@ -230,5 +230,3 @@ buildData().catch(e => {
   console.error(e);
   process.exit(1);
 });
-
-
