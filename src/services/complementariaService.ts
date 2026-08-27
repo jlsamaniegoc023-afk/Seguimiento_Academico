@@ -5,8 +5,8 @@ import { INITIAL_COMPLEMENTARIA_DATA, COMPLEMENTARIA_DRIVE_FOLDER_URL, COMPLEMEN
 export const DRIVE_FOLDER_URL = COMPLEMENTARIA_DRIVE_FOLDER_URL;
 export const DRIVE_FILE_ID = COMPLEMENTARIA_DRIVE_FILE_ID;
 
-const STORAGE_KEY = 'sena_analisis_complementaria_data_v7';
-const STORAGE_SYNC_KEY = 'sena_analisis_complementaria_sync_info_v7';
+const STORAGE_KEY = 'sena_analisis_complementaria_data_v9';
+const STORAGE_SYNC_KEY = 'sena_analisis_complementaria_sync_info_v9';
 
 export interface SyncInfo {
   source: string;
@@ -61,6 +61,10 @@ export function clearComplementariaCache(): void {
   try {
     localStorage.removeItem(STORAGE_KEY);
     localStorage.removeItem(STORAGE_SYNC_KEY);
+    localStorage.removeItem('sena_analisis_complementaria_data_v8');
+    localStorage.removeItem('sena_analisis_complementaria_sync_info_v8');
+    localStorage.removeItem('sena_analisis_complementaria_data_v7');
+    localStorage.removeItem('sena_analisis_complementaria_sync_info_v7');
     localStorage.removeItem('sena_analisis_complementaria_data_v6');
     localStorage.removeItem('sena_analisis_complementaria_sync_info_v6');
     localStorage.removeItem('sena_analisis_complementaria_data_v5');
@@ -114,6 +118,13 @@ export function saveCachedComplementaria(data: FichaComplementaria[], syncInfo: 
   }
 }
 
+const cleanString = (val: any, fallback = ''): string => {
+  if (val === undefined || val === null) return fallback;
+  const str = String(val).trim();
+  const cleaned = str.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]/g, '');
+  return cleaned || fallback;
+};
+
 export function parseComplementariaWorkbook(wb: XLSX.WorkBook, sourceLabel: string = 'Archivo Excel'): FichaComplementaria[] {
   if (!wb.SheetNames || wb.SheetNames.length === 0) {
     throw new Error('El archivo Excel no contiene hojas de datos.');
@@ -137,7 +148,7 @@ export function parseComplementariaWorkbook(wb: XLSX.WorkBook, sourceLabel: stri
   let headerRowIdx = -1;
   const colIndex: { [key: string]: number } = {};
 
-  for (let i = 0; i < Math.min(20, rawData.length); i++) {
+  for (let i = 0; i < Math.min(25, rawData.length); i++) {
     const row = rawData[i] || [];
     const strRow = row.map(c => String(c || '').toUpperCase().trim());
     
@@ -148,7 +159,9 @@ export function parseComplementariaWorkbook(wb: XLSX.WorkBook, sourceLabel: stri
     if (hasFicha || (hasProg && strRow.length > 3)) {
       headerRowIdx = i;
       row.forEach((col, idx) => {
-        const key = String(col || '').trim().toUpperCase();
+        let key = String(col || '').trim().toUpperCase();
+        if (key.includes('IDENTIFICADOR_FICHA')) key = 'IDENTIFICADOR_FICHA';
+        if (key.includes('CODIGO_REGIONAL')) key = 'CODIGO_REGIONAL';
         if (key) {
           colIndex[key] = idx;
         }
@@ -157,12 +170,14 @@ export function parseComplementariaWorkbook(wb: XLSX.WorkBook, sourceLabel: stri
     }
   }
 
-  // Si no se encontraron cabeceras en las primeras 20 filas, asumir fila 0
+  // Si no se encontraron cabeceras en las primeras 25 filas, asumir fila 0
   if (headerRowIdx === -1) {
     headerRowIdx = 0;
     const firstRow = rawData[0] || [];
     firstRow.forEach((col, idx) => {
-      const key = String(col || '').trim().toUpperCase();
+      let key = String(col || '').trim().toUpperCase();
+      if (key.includes('IDENTIFICADOR_FICHA')) key = 'IDENTIFICADOR_FICHA';
+      if (key.includes('CODIGO_REGIONAL')) key = 'CODIGO_REGIONAL';
       if (key) colIndex[key] = idx;
     });
   }
@@ -171,13 +186,13 @@ export function parseComplementariaWorkbook(wb: XLSX.WorkBook, sourceLabel: stri
     for (const key of possibleKeys) {
       const normKey = key.toUpperCase();
       if (colIndex[normKey] !== undefined && r[colIndex[normKey]] !== undefined && r[colIndex[normKey]] !== null) {
-        return r[colIndex[normKey]];
+        return cleanString(r[colIndex[normKey]]);
       }
       // Búsqueda flexible parcial
       for (const mapKey of Object.keys(colIndex)) {
         if (mapKey.includes(normKey) || normKey.includes(mapKey)) {
           if (r[colIndex[mapKey]] !== undefined && r[colIndex[mapKey]] !== null) {
-            return r[colIndex[mapKey]];
+            return cleanString(r[colIndex[mapKey]]);
           }
         }
       }
@@ -186,6 +201,7 @@ export function parseComplementariaWorkbook(wb: XLSX.WorkBook, sourceLabel: stri
   };
 
   const results: FichaComplementaria[] = [];
+  const df14Map = getDF14FichaMap();
 
   for (let i = headerRowIdx + 1; i < rawData.length; i++) {
     const r = rawData[i];
@@ -205,10 +221,10 @@ export function parseComplementariaWorkbook(wb: XLSX.WorkBook, sourceLabel: stri
     let tipoFormacionLabel = '';
     let nivelFormacionLabel = '';
 
-    if (rawNivel === 'CURSO ESPECIAL' || rawNivel.includes('CURSO ESPECIAL')) {
+    if (rawNivel === 'CURSO ESPECIAL' || rawNivel.includes('CURSO ESPECIAL') || rawNivel === '8') {
       tipoFormacionLabel = 'Formación Complementaria';
       nivelFormacionLabel = 'CURSO ESPECIAL';
-    } else if (rawNivel === 'EVENTO' || rawNivel.includes('EVENTO')) {
+    } else if (rawNivel === 'EVENTO' || rawNivel.includes('EVENTO') || rawNivel === '9') {
       tipoFormacionLabel = 'Evento de Divulgación';
       nivelFormacionLabel = 'EVENTO';
     } else {
@@ -240,10 +256,17 @@ export function parseComplementariaWorkbook(wb: XLSX.WorkBook, sourceLabel: stri
     const fem = Number(getColVal(r, ['TOTAL_APRENDICES_FEMENINOS', 'FEMENINOS', 'MUJERES'])) || 0;
     const noBin = Number(getColVal(r, ['TOTAL_APRENDICES_NOBINARIO', 'NO_BINARIO'])) || 0;
 
-    // Helper to parse Sofía Plus XML hour day fractions or integer hours
+    // Helper to parse Sofía Plus XML hour day fractions or integer hours or strings "48:00"
     const parseSofiaPlusHours = (rawVal: any, fallback = 0): number => {
       if (rawVal === undefined || rawVal === null || rawVal === '') return fallback;
-      const num = typeof rawVal === 'number' ? rawVal : Number(String(rawVal).replace(',', '.'));
+      const str = String(rawVal).trim();
+      if (str.includes(':')) {
+        const parts = str.split(':');
+        const h = Number(parts[0]) || 0;
+        const m = Number(parts[1]) || 0;
+        return Math.round((h + m / 60) * 10) / 10;
+      }
+      const num = typeof rawVal === 'number' ? rawVal : Number(str.replace(',', '.'));
       if (isNaN(num) || num <= 0) return fallback;
       if (num < 100 && (!Number.isInteger(num) || num <= 15)) {
         return Math.round(num * 24 * 10) / 10;
@@ -258,10 +281,16 @@ export function parseComplementariaWorkbook(wb: XLSX.WorkBook, sourceLabel: stri
 
     const hPlanta = parseSofiaPlusHours(rawPlanta, 0);
     const hContratistas = parseSofiaPlusHours(rawContratistas, 0);
-    const hTotales = parseSofiaPlusHours(rawTotalHoras, hPlanta + hContratistas || duracion);
+    let totalH = parseSofiaPlusHours(rawTotalHoras, 0);
+
+    if (totalH === 0 && (hPlanta > 0 || hContratistas > 0)) {
+      totalH = hPlanta + hContratistas;
+    }
+    if (totalH === 0) {
+      totalH = duracion > 0 ? duracion : 40;
+    }
 
     // DF-14A Cross-reference for Column AH (POR_CERTIFICAR) and Column AI (CERTIFICADO)
-    const df14Map = getDF14FichaMap();
     const df14Match = df14Map.get(ficha);
 
     let certificados = 0;
@@ -275,10 +304,13 @@ export function parseComplementariaWorkbook(wb: XLSX.WorkBook, sourceLabel: stri
       enFormacion = df14Match.enFormacion || 0;
       desertores = df14Match.desertores || 0;
     } else {
-      certificados = 0;
-      porCertificar = 0;
-      enFormacion = 0;
-      desertores = Math.max(0, matriculados - certificados);
+      if (estado.toLowerCase().includes('terminada') || estado.toLowerCase().includes('terminado')) {
+        certificados = activos > 0 ? activos : matriculados;
+        porCertificar = 0;
+      } else {
+        certificados = 0;
+        porCertificar = activos > 0 ? activos : matriculados;
+      }
     }
 
     results.push({
@@ -295,7 +327,7 @@ export function parseComplementariaWorkbook(wb: XLSX.WorkBook, sourceLabel: stri
       duracionHoras: duracion,
       horasPlanta: hPlanta,
       horasContratistas: hContratistas,
-      horasTotales: hTotales,
+      horasTotales: totalH,
       fechaInicio: fechaInicio,
       fechaFin: fechaFin,
       estadoFicha: estado,
@@ -333,6 +365,20 @@ export function parseComplementariaWorkbook(wb: XLSX.WorkBook, sourceLabel: stri
   return results;
 }
 
+// Fetch helper with timeout
+async function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = 8000): Promise<Response> {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { ...options, signal: controller.signal });
+    clearTimeout(id);
+    return response;
+  } catch (err) {
+    clearTimeout(id);
+    throw err;
+  }
+}
+
 export async function fetchComplementariaFromDrive(customFolderUrl?: string, forceRefresh: boolean = false): Promise<{ data: FichaComplementaria[]; syncInfo: SyncInfo }> {
   let fileId = DRIVE_FILE_ID;
   let folderId = '1DqBcInloI9_V2P4g4LxJMum1F5ZDJJ0y';
@@ -349,31 +395,84 @@ export async function fetchComplementariaFromDrive(customFolderUrl?: string, for
   }
 
   let wb: XLSX.WorkBook | null = null;
-  let syncSource = `Google Drive Folder (${folderId})`;
+  let syncSource = `Google Drive Spreadsheet (${fileId})`;
 
-  // 1. Intento vía proxy de Vite / backend con timestamp para evitar caché HTTP
+  // 1. Intento vía proxy backend / Vite dev server
   try {
     const proxyUrl = `/api/drive-complementaria?folderId=${encodeURIComponent(folderId)}&fileId=${encodeURIComponent(fileId)}&url=${encodeURIComponent(targetUrl)}&_t=${Date.now()}`;
-    const resp = await fetch(proxyUrl);
+    const resp = await fetchWithTimeout(proxyUrl, {}, 6000);
     if (resp.ok) {
       const buffer = await resp.arrayBuffer();
       if (buffer.byteLength > 1000) {
         wb = XLSX.read(buffer, { type: 'array' });
+        syncSource = 'Google Drive PE-04 (API Servidor)';
       }
     }
   } catch (e) {
-    console.warn('Fallo proxy interno de Formación Complementaria:', e);
+    console.warn('Fallo proxy interno de Formación Complementaria, probando endpoints directos:', e);
   }
 
-  // 2. Intento directo Google Drive usercontent download
+  // 2. Intento directo Google Sheets GViz CSV (Reporte)
   if (!wb || !wb.SheetNames || wb.SheetNames.length === 0) {
     try {
-      const driveDirectUrl = `https://drive.usercontent.google.com/download?id=${fileId}&export=download&confirm=t&_t=${Date.now()}`;
-      const resp = await fetch(driveDirectUrl);
+      const gvizUrl = `https://docs.google.com/spreadsheets/d/${fileId}/gviz/tq?tqx=out:csv&sheet=Reporte&_t=${Date.now()}`;
+      const resp = await fetchWithTimeout(gvizUrl, {}, 6000);
+      if (resp.ok) {
+        const text = await resp.text();
+        if (text.length > 500 && text.includes('CODIGO_REGIONAL')) {
+          wb = XLSX.read(text, { type: 'string' });
+          syncSource = 'Google Drive PE-04 (Google Sheets GViz En Vivo)';
+        }
+      }
+    } catch (e) {
+      console.warn('Fallo GViz directo con hoja Reporte:', e);
+    }
+  }
+
+  // 3. Intento directo Google Sheets GViz CSV (Default Sheet)
+  if (!wb || !wb.SheetNames || wb.SheetNames.length === 0) {
+    try {
+      const gvizUrl = `https://docs.google.com/spreadsheets/d/${fileId}/gviz/tq?tqx=out:csv&_t=${Date.now()}`;
+      const resp = await fetchWithTimeout(gvizUrl, {}, 6000);
+      if (resp.ok) {
+        const text = await resp.text();
+        if (text.length > 500) {
+          wb = XLSX.read(text, { type: 'string' });
+          syncSource = 'Google Drive PE-04 (Google Sheets CSV En Vivo)';
+        }
+      }
+    } catch (e) {
+      console.warn('Fallo GViz CSV default:', e);
+    }
+  }
+
+  // 4. Intento directo export sheets XLSX
+  if (!wb || !wb.SheetNames || wb.SheetNames.length === 0) {
+    try {
+      const sheetsUrl = `https://docs.google.com/spreadsheets/d/${fileId}/export?format=xlsx&_t=${Date.now()}`;
+      const resp = await fetchWithTimeout(sheetsUrl, {}, 6000);
       if (resp.ok) {
         const buffer = await resp.arrayBuffer();
         if (buffer.byteLength > 1000) {
           wb = XLSX.read(buffer, { type: 'array' });
+          syncSource = 'Google Drive PE-04 (Google Sheets XLSX Export)';
+        }
+      }
+    } catch (e) {
+      console.warn('Fallo export directo sheets:', e);
+    }
+  }
+
+  // 5. Intento directo Google Drive usercontent download
+  if (!wb || !wb.SheetNames || wb.SheetNames.length === 0) {
+    try {
+      const driveDirectUrl = `https://drive.usercontent.google.com/download?id=${fileId}&export=download&confirm=t&_t=${Date.now()}`;
+      const resp = await fetchWithTimeout(driveDirectUrl, {}, 6000);
+      if (resp.ok) {
+        const buffer = await resp.arrayBuffer();
+        if (buffer.byteLength > 1000) {
+          wb = XLSX.read(buffer, { type: 'array' });
+          syncSource = 'Google Drive PE-04 (Usercontent Directo)';
         }
       }
     } catch (e) {
@@ -381,19 +480,28 @@ export async function fetchComplementariaFromDrive(customFolderUrl?: string, for
     }
   }
 
-  // 3. Intento directo export sheets XLSX
+  // 6. Intento a través de Proxies CORS públicos para despliegues estáticos
   if (!wb || !wb.SheetNames || wb.SheetNames.length === 0) {
-    try {
-      const sheetsUrl = `https://docs.google.com/spreadsheets/d/${fileId}/export?format=xlsx`;
-      const resp = await fetch(sheetsUrl);
-      if (resp.ok) {
-        const buffer = await resp.arrayBuffer();
-        if (buffer.byteLength > 1000) {
-          wb = XLSX.read(buffer, { type: 'array' });
+    const corsProxies = [
+      `https://api.allorigins.win/raw?url=${encodeURIComponent(`https://docs.google.com/spreadsheets/d/${fileId}/gviz/tq?tqx=out:csv&sheet=Reporte`)}`,
+      `https://corsproxy.io/?url=${encodeURIComponent(`https://docs.google.com/spreadsheets/d/${fileId}/gviz/tq?tqx=out:csv&sheet=Reporte`)}`,
+      `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(`https://docs.google.com/spreadsheets/d/${fileId}/gviz/tq?tqx=out:csv&sheet=Reporte`)}`
+    ];
+
+    for (const proxy of corsProxies) {
+      try {
+        const resp = await fetchWithTimeout(proxy, {}, 5000);
+        if (resp.ok) {
+          const text = await resp.text();
+          if (text.length > 500 && text.includes('CODIGO_REGIONAL')) {
+            wb = XLSX.read(text, { type: 'string' });
+            syncSource = 'Google Drive PE-04 (Sincronización Web en Tiempo Real)';
+            break;
+          }
         }
+      } catch (e) {
+        console.warn('Fallo proxy CORS:', proxy, e);
       }
-    } catch (e) {
-      console.warn('Fallo export directo sheets:', e);
     }
   }
 
@@ -412,9 +520,9 @@ export async function fetchComplementariaFromDrive(customFolderUrl?: string, for
     return { data: cached.data, syncInfo };
   }
 
-  const parsed = parseComplementariaWorkbook(wb, 'Google Drive PE-04');
+  const parsed = parseComplementariaWorkbook(wb, syncSource);
   const syncInfo: SyncInfo = {
-    source: 'Google Drive PE-04 (En Vivo)',
+    source: `${syncSource} - En Vivo`,
     syncDate: new Date().toLocaleString('es-CO'),
     totalRecords: parsed.length,
     fileName: 'PE-04_1.xml',

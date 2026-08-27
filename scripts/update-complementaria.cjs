@@ -65,16 +65,24 @@ async function buildData() {
     }
   }
 
+  const cleanStr = (val, fallback = '') => {
+    if (val === undefined || val === null) return fallback;
+    const str = String(val).trim();
+    // Remove non-printable / control characters (except common Latin letters and symbols)
+    const cleaned = str.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]/g, '');
+    return cleaned || fallback;
+  };
+
   const getColVal = (r, possibleKeys) => {
     for (const key of possibleKeys) {
       const normKey = key.toUpperCase();
       if (colIndex[normKey] !== undefined && r[colIndex[normKey]] !== undefined && r[colIndex[normKey]] !== null) {
-        return r[colIndex[normKey]];
+        return cleanStr(r[colIndex[normKey]]);
       }
       for (const mapKey of Object.keys(colIndex)) {
         if (mapKey.includes(normKey) || normKey.includes(mapKey)) {
           if (r[colIndex[mapKey]] !== undefined && r[colIndex[mapKey]] !== null) {
-            return r[colIndex[mapKey]];
+            return cleanStr(r[colIndex[mapKey]]);
           }
         }
       }
