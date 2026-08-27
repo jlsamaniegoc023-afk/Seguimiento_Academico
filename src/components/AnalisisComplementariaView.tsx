@@ -118,11 +118,11 @@ export default function AnalisisComplementariaView({}: AnalisisComplementariaVie
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 15;
 
-  // Auto-sync from Google Drive upon opening the view
+  // Auto-sync from Google Drive upon opening the view and periodic real-time sync
   const autoSyncDoneRef = useRef(false);
 
   const handleSyncFromDrive = async (silent: boolean = false, force: boolean = false, customUrl?: string) => {
-    setIsSyncing(true);
+    if (!silent) setIsSyncing(true);
     setSyncError(null);
     if (!silent) setSyncSuccessMsg(null);
 
@@ -138,11 +138,15 @@ export default function AnalisisComplementariaView({}: AnalisisComplementariaVie
       const ceCount = result.data.filter(f => (f.nivelFormacion || '').toUpperCase().includes('CURSO ESPECIAL') || (f.tipoFormacion || '').includes('Complementaria')).length;
       const evCount = result.data.filter(f => (f.nivelFormacion || '').toUpperCase().includes('EVENTO') || (f.tipoFormacion || '').includes('Evento')).length;
 
-      setSyncSuccessMsg(`Sincronización exitosa con Google Drive: ${result.data.length.toLocaleString('es-CO')} registros PE-04 actualizados (${ceCount} Cursos Especiales y ${evCount} Eventos de Divulgación).`);
-      setTimeout(() => setSyncSuccessMsg(null), 8000);
+      if (!silent) {
+        setSyncSuccessMsg(`Sincronización exitosa con Google Drive: ${result.data.length.toLocaleString('es-CO')} registros PE-04 actualizados (${ceCount} Cursos Especiales y ${evCount} Eventos de Divulgación).`);
+        setTimeout(() => setSyncSuccessMsg(null), 8000);
+      }
     } catch (err: any) {
       console.error('Error sincronizando con Google Drive:', err);
-      setSyncError(err?.message || 'Error al conectar con Google Drive. Se mantienen los datos en caché.');
+      if (!silent) {
+        setSyncError(err?.message || 'Error al conectar con Google Drive. Se mantienen los datos en caché.');
+      }
     } finally {
       setIsSyncing(false);
     }
@@ -153,6 +157,24 @@ export default function AnalisisComplementariaView({}: AnalisisComplementariaVie
       autoSyncDoneRef.current = true;
       handleSyncFromDrive(true, false);
     }
+
+    // Auto-sync polling every 60s to detect real-time changes in Google Drive
+    const interval = setInterval(() => {
+      handleSyncFromDrive(true, false);
+    }, 60000);
+
+    // Sync on window focus / visibility change
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        handleSyncFromDrive(true, false);
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
   }, []);
 
   // Filter options

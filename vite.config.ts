@@ -134,38 +134,49 @@ export default defineConfig(() => {
             try {
               const urlObj = new URL(rawUrl, `http://${req.headers.host || 'localhost'}`);
               let fileId = urlObj.searchParams.get('fileId') || '';
-              const folderId = urlObj.searchParams.get('folderId') || '';
+              const folderId = urlObj.searchParams.get('folderId') || '1DqBcInloI9_V2P4g4LxJMum1F5ZDJJ0y';
               const driveUrl = urlObj.searchParams.get('url') || '';
 
-              if (folderId === '1DqBcInloI9_V2P4g4LxJMum1F5ZDJJ0y' || driveUrl.includes('1DqBcInloI9_V2P4g4LxJMum1F5ZDJJ0y') || !fileId) {
-                fileId = '1DXgCIl7sPWS48cVk1S645Ra6qJ1nktDS';
-              } else if (!fileId && folderId) {
-                // Dynamically resolve file ID inside Google Drive folder
+              // Si no se proporcionó fileId o se especificó la carpeta oficial de Drive, buscar dinámicamente en la carpeta
+              const targetFolderId = folderId || (driveUrl.match(/folders\/([a-zA-Z0-9_-]{25,})/)?.[1] || '1DqBcInloI9_V2P4g4LxJMum1F5ZDJJ0y');
+
+              if (!fileId && targetFolderId) {
                 try {
-                  const folderRes = await fetch(`https://drive.google.com/drive/folders/${folderId}?usp=sharing`, {
-                    headers: { 'User-Agent': 'Mozilla/5.0' }
+                  const folderRes = await fetch(`https://drive.google.com/drive/folders/${targetFolderId}?usp=sharing&_t=${Date.now()}`, {
+                    headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' }
                   });
                   if (folderRes.ok) {
                     const html = await folderRes.text();
-                    const match = html.match(/"([a-zA-Z0-9_-]{28,45})".*?"([^"]+\.(?:xlsx|xls|xml|csv|sheet))"/i);
-                    if (match && match[1]) {
-                      fileId = match[1];
+                    const allMatches = [...html.matchAll(/"([a-zA-Z0-9_-]{28,40})"/g)].map(m => m[1]);
+                    const candidates = [...new Set(allMatches)].filter(id => id !== targetFolderId && !id.startsWith('AIza') && !id.startsWith('ADFN'));
+
+                    for (const candId of candidates) {
+                      try {
+                        const testUrl = `https://drive.usercontent.google.com/download?id=${candId}&export=download&confirm=t&_t=${Date.now()}`;
+                        const testRes = await fetch(testUrl, { method: 'HEAD', headers: { 'User-Agent': 'Mozilla/5.0' } });
+                        const len = Number(testRes.headers.get('content-length') || 0);
+                        const ct = testRes.headers.get('content-type') || '';
+                        if (testRes.ok && (len > 5000 || ct.includes('xml') || ct.includes('excel') || ct.includes('spreadsheet') || ct.includes('octet-stream'))) {
+                          fileId = candId;
+                          break;
+                        }
+                      } catch (e) {}
                     }
                   }
                 } catch (e) {
-                  console.warn('Error resolviendo carpeta de Complementaria:', e);
+                  console.warn('Error resolviendo carpeta de Complementaria dinámicamente:', e);
                 }
               }
 
               if (!fileId) {
-                fileId = '1DXgCIl7sPWS48cVk1S645Ra6qJ1nktDS';
+                fileId = '1f1VxWq-VMKbGHlAWgL6lO4YJoGLNJyOd';
               }
 
               let arrayBuf: ArrayBuffer | null = null;
 
-              // Download Attempt 1: drive.usercontent.google.com
+              // Intento 1: drive.usercontent.google.com con confirmación y anti-caché
               try {
-                const driveDownloadUrl = `https://drive.usercontent.google.com/download?id=${fileId}&export=download&confirm=t`;
+                const driveDownloadUrl = `https://drive.usercontent.google.com/download?id=${fileId}&export=download&confirm=t&_t=${Date.now()}`;
                 const response = await fetch(driveDownloadUrl, {
                   headers: { 'User-Agent': 'Mozilla/5.0' }
                 });
@@ -179,28 +190,10 @@ export default defineConfig(() => {
                 console.warn('Fallo intento 1 drive.usercontent:', e);
               }
 
-              // Download Attempt 2: docs.google.com/spreadsheets/export
+              // Intento 2: drive.google.com/uc
               if (!arrayBuf) {
                 try {
-                  const fallbackUrl = `https://docs.google.com/spreadsheets/d/${fileId}/export?format=xlsx`;
-                  const fbRes = await fetch(fallbackUrl, {
-                    headers: { 'User-Agent': 'Mozilla/5.0' }
-                  });
-                  if (fbRes.ok) {
-                    const buf = await fbRes.arrayBuffer();
-                    if (buf.byteLength > 1000) {
-                      arrayBuf = buf;
-                    }
-                  }
-                } catch (e) {
-                  console.warn('Fallo intento 2 docs export:', e);
-                }
-              }
-
-              // Download Attempt 3: drive.google.com/uc
-              if (!arrayBuf) {
-                try {
-                  const ucUrl = `https://drive.google.com/uc?export=download&id=${fileId}`;
+                  const ucUrl = `https://drive.google.com/uc?export=download&id=${fileId}&confirm=t&_t=${Date.now()}`;
                   const ucRes = await fetch(ucUrl, {
                     headers: { 'User-Agent': 'Mozilla/5.0' }
                   });
@@ -211,18 +204,37 @@ export default defineConfig(() => {
                     }
                   }
                 } catch (e) {
-                  console.warn('Fallo intento 3 drive uc:', e);
+                  console.warn('Fallo intento 2 drive uc:', e);
+                }
+              }
+
+              // Intento 3: docs.google.com/spreadsheets/export
+              if (!arrayBuf) {
+                try {
+                  const fallbackUrl = `https://docs.google.com/spreadsheets/d/${fileId}/export?format=xlsx&_t=${Date.now()}`;
+                  const fbRes = await fetch(fallbackUrl, {
+                    headers: { 'User-Agent': 'Mozilla/5.0' }
+                  });
+                  if (fbRes.ok) {
+                    const buf = await fbRes.arrayBuffer();
+                    if (buf.byteLength > 1000) {
+                      arrayBuf = buf;
+                    }
+                  }
+                } catch (e) {
+                  console.warn('Fallo intento 3 docs export:', e);
                 }
               }
 
               if (!arrayBuf) {
                 res.statusCode = 502;
-                res.end(JSON.stringify({ error: 'No se pudo descargar el reporte PE-04 de Formación Complementaria desde Google Drive.' }));
+                res.end(JSON.stringify({ error: 'No se pudo descargar el archivo PE-04 de Formación Complementaria desde la carpeta de Google Drive.' }));
                 return;
               }
 
-              res.setHeader('Content-Type', 'application/vnd.ms-excel; charset=utf-8');
+              res.setHeader('Content-Type', 'application/octet-stream');
               res.setHeader('Content-Length', arrayBuf.byteLength.toString());
+              res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
               res.end(Buffer.from(arrayBuf));
             } catch (e: any) {
               res.statusCode = 500;
