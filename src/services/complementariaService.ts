@@ -392,33 +392,65 @@ export async function fetchComplementariaFromDrive(customFolderUrl?: string, for
   }
 
   const fileMatch = targetUrl.match(/\/d\/([a-zA-Z0-9-_]+)/) || targetUrl.match(/id=([a-zA-Z0-9-_]+)/);
-  if (fileMatch) {
+  if (fileMatch && !folderMatch) {
     fileId = fileMatch[1];
   }
 
   let wb: XLSX.WorkBook | null = null;
-  let syncSource = `Google Drive Spreadsheet (${fileId})`;
+  let syncSource = `Google Drive (Carpeta: ${folderId})`;
 
-  // 1. Intento vía proxy backend / Vite dev server
+  // 1. Intento principal vía proxy backend (escaneo dinámico de la carpeta oficial de Google Drive)
   try {
-    const proxyUrl = `/api/drive-complementaria?folderId=${encodeURIComponent(folderId)}&fileId=${encodeURIComponent(fileId)}&url=${encodeURIComponent(targetUrl)}&_t=${Date.now()}`;
-    const resp = await fetchWithTimeout(proxyUrl, {}, 6000);
+    const proxyUrl = `/api/drive-complementaria?folderId=${encodeURIComponent(folderId)}&url=${encodeURIComponent(targetUrl)}&_t=${Date.now()}`;
+    const resp = await fetchWithTimeout(proxyUrl, {
+      cache: 'no-store',
+      headers: {
+        'Pragma': 'no-cache',
+        'Cache-Control': 'no-cache, no-store, must-revalidate'
+      }
+    }, 12000);
+
     if (resp.ok) {
       const buffer = await resp.arrayBuffer();
       if (buffer.byteLength > 1000) {
         wb = XLSX.read(buffer, { type: 'array' });
-        syncSource = 'Google Drive PE-04 (API Servidor)';
+        const resolvedId = resp.headers.get('x-drive-file-id');
+        syncSource = resolvedId 
+          ? `Google Drive Carpeta Oficial en Vivo (${resolvedId})` 
+          : 'Google Drive Carpeta Oficial en Vivo';
       }
     }
   } catch (e) {
     console.warn('Fallo proxy interno de Formación Complementaria, probando endpoints directos:', e);
   }
 
-  // 2. Intento directo Google Sheets GViz CSV (Reporte)
+  // 2. Intento directo Google Drive usercontent download (con fileId actual)
+  if (!wb || !wb.SheetNames || wb.SheetNames.length === 0) {
+    const directCandidates = [fileId, '1ZEqmMzr_MuB4wdlQlw1ldXe78WeR7S9Q', '1f1VxWq-VMKbGHlAWgL6lO4YJoGLNJyOd'];
+    for (const candId of directCandidates) {
+      if (!candId) continue;
+      try {
+        const driveDirectUrl = `https://drive.usercontent.google.com/download?id=${candId}&export=download&confirm=t&_t=${Date.now()}`;
+        const resp = await fetchWithTimeout(driveDirectUrl, { cache: 'no-store' }, 8000);
+        if (resp.ok) {
+          const buffer = await resp.arrayBuffer();
+          if (buffer.byteLength > 1000) {
+            wb = XLSX.read(buffer, { type: 'array' });
+            syncSource = `Google Drive PE-04 Directo (${candId})`;
+            break;
+          }
+        }
+      } catch (e) {
+        console.warn(`Fallo descarga directa drive candidate ${candId}:`, e);
+      }
+    }
+  }
+
+  // 3. Intento directo Google Sheets GViz CSV (Reporte)
   if (!wb || !wb.SheetNames || wb.SheetNames.length === 0) {
     try {
       const gvizUrl = `https://docs.google.com/spreadsheets/d/${fileId}/gviz/tq?tqx=out:csv&sheet=Reporte&_t=${Date.now()}`;
-      const resp = await fetchWithTimeout(gvizUrl, {}, 6000);
+      const resp = await fetchWithTimeout(gvizUrl, { cache: 'no-store' }, 6000);
       if (resp.ok) {
         const text = await resp.text();
         if (text.length > 500 && text.includes('CODIGO_REGIONAL')) {
@@ -431,11 +463,11 @@ export async function fetchComplementariaFromDrive(customFolderUrl?: string, for
     }
   }
 
-  // 3. Intento directo Google Sheets GViz CSV (Default Sheet)
+  // 4. Intento directo Google Sheets GViz CSV (Default Sheet)
   if (!wb || !wb.SheetNames || wb.SheetNames.length === 0) {
     try {
       const gvizUrl = `https://docs.google.com/spreadsheets/d/${fileId}/gviz/tq?tqx=out:csv&_t=${Date.now()}`;
-      const resp = await fetchWithTimeout(gvizUrl, {}, 6000);
+      const resp = await fetchWithTimeout(gvizUrl, { cache: 'no-store' }, 6000);
       if (resp.ok) {
         const text = await resp.text();
         if (text.length > 500) {
@@ -448,11 +480,11 @@ export async function fetchComplementariaFromDrive(customFolderUrl?: string, for
     }
   }
 
-  // 4. Intento directo export sheets XLSX
+  // 5. Intento directo export sheets XLSX
   if (!wb || !wb.SheetNames || wb.SheetNames.length === 0) {
     try {
       const sheetsUrl = `https://docs.google.com/spreadsheets/d/${fileId}/export?format=xlsx&_t=${Date.now()}`;
-      const resp = await fetchWithTimeout(sheetsUrl, {}, 6000);
+      const resp = await fetchWithTimeout(sheetsUrl, { cache: 'no-store' }, 6000);
       if (resp.ok) {
         const buffer = await resp.arrayBuffer();
         if (buffer.byteLength > 1000) {
@@ -462,23 +494,6 @@ export async function fetchComplementariaFromDrive(customFolderUrl?: string, for
       }
     } catch (e) {
       console.warn('Fallo export directo sheets:', e);
-    }
-  }
-
-  // 5. Intento directo Google Drive usercontent download
-  if (!wb || !wb.SheetNames || wb.SheetNames.length === 0) {
-    try {
-      const driveDirectUrl = `https://drive.usercontent.google.com/download?id=${fileId}&export=download&confirm=t&_t=${Date.now()}`;
-      const resp = await fetchWithTimeout(driveDirectUrl, {}, 6000);
-      if (resp.ok) {
-        const buffer = await resp.arrayBuffer();
-        if (buffer.byteLength > 1000) {
-          wb = XLSX.read(buffer, { type: 'array' });
-          syncSource = 'Google Drive PE-04 (Usercontent Directo)';
-        }
-      }
-    } catch (e) {
-      console.warn('Fallo descarga directa drive usercontent:', e);
     }
   }
 
@@ -512,7 +527,7 @@ export async function fetchComplementariaFromDrive(customFolderUrl?: string, for
     console.log('Utilizando dataset sincronizado de respaldo para PE-04.');
     const cached = getCachedComplementaria();
     const syncInfo: SyncInfo = {
-      source: 'Google Drive PE-04 (Sincronizado)',
+      source: 'Google Drive PE-04 (Dataset Sincronizado)',
       syncDate: new Date().toLocaleString('es-CO'),
       totalRecords: cached.data.length,
       fileName: 'PE-04_1.xml',
@@ -524,7 +539,7 @@ export async function fetchComplementariaFromDrive(customFolderUrl?: string, for
 
   const parsed = parseComplementariaWorkbook(wb, syncSource);
   const syncInfo: SyncInfo = {
-    source: `${syncSource} - En Vivo`,
+    source: syncSource,
     syncDate: new Date().toLocaleString('es-CO'),
     totalRecords: parsed.length,
     fileName: 'PE-04_1.xml',

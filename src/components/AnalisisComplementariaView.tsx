@@ -153,26 +153,26 @@ export default function AnalisisComplementariaView({}: AnalisisComplementariaVie
   };
 
   useEffect(() => {
-    if (!autoSyncDoneRef.current) {
-      autoSyncDoneRef.current = true;
-      handleSyncFromDrive(true, false);
-    }
+    // Sincronización inmediata al abrir el módulo para asegurar los datos más recientes del Drive
+    handleSyncFromDrive(true, false);
 
-    // Auto-sync polling every 60s to detect real-time changes in Google Drive
+    // Sondeo automático cada 25 segundos para detectar cambios en el archivo de Google Drive en tiempo real
     const interval = setInterval(() => {
       handleSyncFromDrive(true, false);
-    }, 60000);
+    }, 25000);
 
-    // Sync on window focus / visibility change
+    // Sincronización inmediata al enfocar la pestaña o regresar a la ventana
     const onVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
         handleSyncFromDrive(true, false);
       }
     };
+    window.addEventListener('focus', onVisibilityChange);
     document.addEventListener('visibilitychange', onVisibilityChange);
 
     return () => {
       clearInterval(interval);
+      window.removeEventListener('focus', onVisibilityChange);
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
   }, []);

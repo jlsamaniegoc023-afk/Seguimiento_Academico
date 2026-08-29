@@ -2,8 +2,9 @@ const XLSX = require('xlsx');
 const fs = require('fs');
 
 async function processDriveFile() {
-  const fileId = '1f1VxWq-VMKbGHlAWgL6lO4YJoGLNJyOd';
-  const url = 'https://drive.usercontent.google.com/download?id=' + fileId + '&export=download&confirm=t';
+  const fileId = '1ZEqmMzr_MuB4wdlQlw1ldXe78WeR7S9Q';
+  const url = 'https://drive.usercontent.google.com/download?id=' + fileId + '&export=download&confirm=t&_t=' + Date.now();
+  console.log('Downloading latest file from:', url);
   const res = await fetch(url);
   const buf = await res.arrayBuffer();
   const wb = XLSX.read(buf, { type: 'array' });
@@ -175,12 +176,12 @@ async function processDriveFile() {
     });
   }
 
-  console.log('Total extracted:', results.length);
+  console.log('Total extracted from new file:', results.length);
   
   const fileContent = `import { FichaComplementaria } from '../types';
 
 export const COMPLEMENTARIA_DRIVE_FOLDER_URL = 'https://drive.google.com/drive/folders/1DqBcInloI9_V2P4g4LxJMum1F5ZDJJ0y?usp=sharing';
-export const COMPLEMENTARIA_DRIVE_FILE_ID = '1f1VxWq-VMKbGHlAWgL6lO4YJoGLNJyOd';
+export const COMPLEMENTARIA_DRIVE_FILE_ID = '1ZEqmMzr_MuB4wdlQlw1ldXe78WeR7S9Q';
 
 export const INITIAL_COMPLEMENTARIA_DATA: FichaComplementaria[] = ${JSON.stringify(results, null, 2)};
 `;

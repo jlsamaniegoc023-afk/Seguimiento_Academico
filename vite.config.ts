@@ -137,10 +137,10 @@ export default defineConfig(() => {
               const folderId = urlObj.searchParams.get('folderId') || '1DqBcInloI9_V2P4g4LxJMum1F5ZDJJ0y';
               const driveUrl = urlObj.searchParams.get('url') || '';
 
-              // Si no se proporcionó fileId o se especificó la carpeta oficial de Drive, buscar dinámicamente en la carpeta
               const targetFolderId = folderId || (driveUrl.match(/folders\/([a-zA-Z0-9_-]{25,})/)?.[1] || '1DqBcInloI9_V2P4g4LxJMum1F5ZDJJ0y');
 
-              if (!fileId && targetFolderId) {
+              // Escaneo dinámico y en tiempo real de la carpeta oficial de Google Drive
+              if (targetFolderId) {
                 try {
                   const folderRes = await fetch(`https://drive.google.com/drive/folders/${targetFolderId}?usp=sharing&_t=${Date.now()}`, {
                     headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' }
@@ -148,7 +148,14 @@ export default defineConfig(() => {
                   if (folderRes.ok) {
                     const html = await folderRes.text();
                     const allMatches = [...html.matchAll(/"([a-zA-Z0-9_-]{28,40})"/g)].map(m => m[1]);
-                    const candidates = [...new Set(allMatches)].filter(id => id !== targetFolderId && !id.startsWith('AIza') && !id.startsWith('ADFN'));
+                    const candidates = [...new Set(allMatches)].filter(id => 
+                      id !== targetFolderId && 
+                      !id.startsWith('AIza') && 
+                      !id.startsWith('ADFN') && 
+                      !id.startsWith('AA2Yr') &&
+                      !id.includes('Errors') &&
+                      !id.includes('Recaptcha')
+                    );
 
                     for (const candId of candidates) {
                       try {
@@ -169,7 +176,7 @@ export default defineConfig(() => {
               }
 
               if (!fileId) {
-                fileId = '1f1VxWq-VMKbGHlAWgL6lO4YJoGLNJyOd';
+                fileId = '1ZEqmMzr_MuB4wdlQlw1ldXe78WeR7S9Q';
               }
 
               let arrayBuf: ArrayBuffer | null = null;
@@ -234,7 +241,10 @@ export default defineConfig(() => {
 
               res.setHeader('Content-Type', 'application/octet-stream');
               res.setHeader('Content-Length', arrayBuf.byteLength.toString());
-              res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+              res.setHeader('X-Drive-File-Id', fileId);
+              res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
+              res.setHeader('Pragma', 'no-cache');
+              res.setHeader('Expires', '0');
               res.end(Buffer.from(arrayBuf));
             } catch (e: any) {
               res.statusCode = 500;
