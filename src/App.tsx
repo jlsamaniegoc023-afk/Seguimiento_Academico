@@ -44,9 +44,14 @@ import {
 } from 'lucide-react';
 
 export default function App() {
+  // Al abrir la aplicación siempre se requiere inicio de sesión (estado inicial null)
   const [currentUser, setCurrentUser] = useState<{ email: string; role: string } | null>(() => {
-    const saved = localStorage.getItem('sena_current_user');
-    return saved ? JSON.parse(saved) : null;
+    try {
+      const saved = sessionStorage.getItem('sena_current_user');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
   });
 
   const [rows, setRows] = useState<SofiaRow[]>([]);
@@ -55,7 +60,7 @@ export default function App() {
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
   const [inasistencias, setInasistencias] = useState<InasistenciaRecord[]>(() => {
     try {
-      const saved = localStorage.getItem('sena_inasistencias_records');
+      const saved = sessionStorage.getItem('sena_inasistencias_records');
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length >= INITIAL_INASISTENCIAS_RECORDS.length) {
@@ -68,12 +73,34 @@ export default function App() {
     }
   });
 
+  // Limpiar cualquier residuo de localStorage previo al iniciar la app
+  useEffect(() => {
+    try {
+      const keysToRemove = Object.keys(localStorage).filter(k => k.startsWith('sena_'));
+      keysToRemove.forEach(k => localStorage.removeItem(k));
+    } catch (e) {
+      console.warn('Storage cleanup notice:', e);
+    }
+  }, []);
+
+  // Al cerrar la pestaña/ventana o recargar completamente, asegurar la limpieza de sesiones y registros
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      try {
+        const keysToRemove = Object.keys(localStorage).filter(k => k.startsWith('sena_'));
+        keysToRemove.forEach(k => localStorage.removeItem(k));
+      } catch {}
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, []);
+
   const handleInasistenciasLoaded = (records: InasistenciaRecord[]) => {
     setInasistencias(records);
     try {
-      localStorage.setItem('sena_inasistencias_records', JSON.stringify(records));
+      sessionStorage.setItem('sena_inasistencias_records', JSON.stringify(records));
     } catch (e) {
-      console.warn('LocalStorage limit exceeded, caching in memory', e);
+      console.warn('SessionStorage limit exceeded, caching in memory', e);
     }
   };
   
@@ -85,13 +112,19 @@ export default function App() {
   const handleLoginSuccess = (email: string, role: string) => {
     const user = { email, role };
     setCurrentUser(user);
-    localStorage.setItem('sena_current_user', JSON.stringify(user));
+    try {
+      sessionStorage.setItem('sena_current_user', JSON.stringify(user));
+    } catch {}
   };
 
   const handleLogout = () => {
     if (confirm('¿Está seguro de que desea cerrar la sesión?')) {
       setCurrentUser(null);
-      localStorage.removeItem('sena_current_user');
+      try {
+        sessionStorage.clear();
+        const keysToRemove = Object.keys(localStorage).filter(k => k.startsWith('sena_'));
+        keysToRemove.forEach(k => localStorage.removeItem(k));
+      } catch {}
     }
   };
 

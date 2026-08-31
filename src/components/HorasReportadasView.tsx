@@ -112,18 +112,36 @@ export default function HorasReportadasView({
 
   // Google Drive Connection States
   const [showDriveModal, setShowDriveModal] = useState(false);
-  const [driveUrlInput, setDriveUrlInput] = useState(() => localStorage.getItem('sena_horas_reportadas_drive_url') || DEFAULT_DRIVE_SHEET_URL);
-  const [connectedDriveUrl, setConnectedDriveUrl] = useState(() => localStorage.getItem('sena_horas_reportadas_drive_url') || DEFAULT_DRIVE_SHEET_URL);
-  const [lastSyncTime, setLastSyncTime] = useState(() => localStorage.getItem('sena_horas_reportadas_drive_sync_time') || '');
+  const [driveUrlInput, setDriveUrlInput] = useState(() => {
+    try {
+      return sessionStorage.getItem('sena_horas_reportadas_drive_url') || DEFAULT_DRIVE_SHEET_URL;
+    } catch {
+      return DEFAULT_DRIVE_SHEET_URL;
+    }
+  });
+  const [connectedDriveUrl, setConnectedDriveUrl] = useState(() => {
+    try {
+      return sessionStorage.getItem('sena_horas_reportadas_drive_url') || DEFAULT_DRIVE_SHEET_URL;
+    } catch {
+      return DEFAULT_DRIVE_SHEET_URL;
+    }
+  });
+  const [lastSyncTime, setLastSyncTime] = useState(() => {
+    try {
+      return sessionStorage.getItem('sena_horas_reportadas_drive_sync_time') || '';
+    } catch {
+      return '';
+    }
+  });
   const [isSyncingDrive, setIsSyncingDrive] = useState(false);
   const [driveError, setDriveError] = useState<string | null>(null);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Saved custom reports in localStorage
+  // Saved custom reports in sessionStorage
   const [customRecords, setCustomRecords] = useState<ReporteHorasRecord[]>(() => {
     try {
-      const saved = localStorage.getItem('sena_horas_reportadas_custom');
+      const saved = sessionStorage.getItem('sena_horas_reportadas_custom');
       if (saved) {
         const parsed: ReporteHorasRecord[] = JSON.parse(saved);
         const fixed = parsed.map(r => {
@@ -148,9 +166,9 @@ export default function HorasReportadasView({
   const saveCustomRecords = (records: ReporteHorasRecord[]) => {
     setCustomRecords(records);
     try {
-      localStorage.setItem('sena_horas_reportadas_custom', JSON.stringify(records));
+      sessionStorage.setItem('sena_horas_reportadas_custom', JSON.stringify(records));
     } catch (e) {
-      console.error('Error saving records to localStorage', e);
+      console.error('Error saving records to sessionStorage', e);
     }
   };
 
@@ -748,8 +766,10 @@ export default function HorasReportadasView({
         setConnectedDriveUrl(targetUrl);
         const syncDate = new Date().toLocaleString('es-CO');
         setLastSyncTime(syncDate);
-        localStorage.setItem('sena_horas_reportadas_drive_url', targetUrl);
-        localStorage.setItem('sena_horas_reportadas_drive_sync_time', syncDate);
+        try {
+          sessionStorage.setItem('sena_horas_reportadas_drive_url', targetUrl);
+          sessionStorage.setItem('sena_horas_reportadas_drive_sync_time', syncDate);
+        } catch {}
         setImportNotice(`¡Sincronización con Google Drive exitosa! Se procesaron y cargaron ${imported.length} registro(s) en todas las hojas/meses.`);
         setShowDriveModal(false);
       } else {

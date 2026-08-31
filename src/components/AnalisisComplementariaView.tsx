@@ -30,7 +30,8 @@ import {
   ShieldCheck,
   Calendar,
   AlertCircle,
-  BookOpen
+  BookOpen,
+  FileText
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -56,6 +57,7 @@ import {
   SyncInfo,
   DRIVE_FOLDER_URL 
 } from '../services/complementariaService';
+import { generateInstructoresComplementariaPDF } from '../services/complementariaPdfService';
 import { InstructorCalendarScheduleView } from './InstructorCalendarScheduleView';
 import { SpecialProgramsAnalysisView } from './SpecialProgramsAnalysisView';
 
@@ -117,6 +119,12 @@ export default function AnalisisComplementariaView({}: AnalisisComplementariaVie
   // Pagination for tables
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 15;
+
+  // PDF Generation State
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+  const [pdfProgress, setPdfProgress] = useState<{ current: number; total: number; instructor: string } | null>(null);
+  const [pdfSuccessMsg, setPdfSuccessMsg] = useState<string | null>(null);
+  const [pdfError, setPdfError] = useState<string | null>(null);
 
   // Auto-sync from Google Drive upon opening the view and periodic real-time sync
   const autoSyncDoneRef = useRef(false);
@@ -794,6 +802,47 @@ export default function AnalisisComplementariaView({}: AnalisisComplementariaVie
     XLSX.writeFile(wb, `Reporte_Complementaria_CentroMinero_${new Date().toISOString().slice(0, 10)}.xlsx`);
   };
 
+  // Generate Instructores PDF Report
+  const handleGenerateInstructoresPdf = async (onlySelected: boolean = false) => {
+    if (fichasComp.length === 0) {
+      alert('No hay datos disponibles para generar el PDF. Por favor sincronice o cargue el reporte PE-04.');
+      return;
+    }
+
+    setIsGeneratingPdf(true);
+    setPdfError(null);
+    setPdfSuccessMsg(null);
+    setPdfProgress({ current: 0, total: 1, instructor: 'Iniciando compilación del reporte...' });
+
+    try {
+      const targetInstructor = onlySelected && selectedInstructor !== 'TODOS' 
+        ? selectedInstructor 
+        : (selectedInstructor !== 'TODOS' ? selectedInstructor : undefined);
+      
+      const fichasToUse = filteredFichas.length > 0 ? filteredFichas : fichasComp;
+
+      await generateInstructoresComplementariaPDF({
+        fichas: fichasToUse,
+        selectedInstructor: targetInstructor,
+        vigencia: '2026',
+        centro: 'Centro Minero - Regional Boyacá',
+        sourceFileName: syncInfo?.fileName || 'PE-04_Centro_Minero.xlsx',
+        onProgress: (current, total, instructorName) => {
+          setPdfProgress({ current, total, instructor: instructorName });
+        }
+      });
+
+      setPdfSuccessMsg('¡Documento PDF de Formación Complementaria por Instructor generado y descargado con éxito!');
+      setTimeout(() => setPdfSuccessMsg(null), 7000);
+    } catch (err: any) {
+      console.error('Error generando PDF de instructores:', err);
+      setPdfError(err?.message || 'Ocurrió un error al generar el PDF del análisis de instructores.');
+    } finally {
+      setIsGeneratingPdf(false);
+      setPdfProgress(null);
+    }
+  };
+
   // Download template
   const handleDownloadTemplate = () => {
     const templateData = [
@@ -901,6 +950,27 @@ export default function AnalisisComplementariaView({}: AnalisisComplementariaVie
               <Download className="w-4 h-4 text-slate-600" />
               Exportar
             </button>
+
+            <button
+              id="btn-generate-pdf-instructores"
+              onClick={() => handleGenerateInstructoresPdf(false)}
+              disabled={isGeneratingPdf || fichasComp.length === 0}
+              className={`inline-flex items-center gap-2 px-3.5 py-2 text-sm font-medium rounded-lg text-white transition-all shadow-xs ${
+                isGeneratingPdf 
+                  ? 'bg-rose-400 cursor-not-allowed' 
+                  : 'bg-rose-600 hover:bg-rose-700 active:scale-95 border border-rose-700'
+              }`}
+              title="Generar reporte PDF con 1 hoja por instructor (cursos creados, cronograma mensual y análisis detallado)"
+            >
+              <FileText className={`w-4 h-4 ${isGeneratingPdf ? 'animate-bounce' : ''}`} />
+              {isGeneratingPdf ? (
+                <span>
+                  Generando PDF ({pdfProgress ? `${pdfProgress.current}/${pdfProgress.total}` : '...'})
+                </span>
+              ) : (
+                <span>PDF por Instructor</span>
+              )}
+            </button>
           </div>
         </div>
 
@@ -940,6 +1010,45 @@ export default function AnalisisComplementariaView({}: AnalisisComplementariaVie
           </div>
         </div>
 
+        {/* PDF Progress Banner */}
+        {isGeneratingPdf && pdfProgress && (
+          <div className="mt-3 p-3.5 bg-rose-50 border border-rose-200 rounded-lg animate-fadeIn shadow-xs">
+            <div className="flex items-center justify-between text-xs font-semibold text-rose-900 mb-1.5">
+              <span className="flex items-center gap-2">
+                <FileText className="w-4 h-4 text-rose-600 animate-pulse" />
+                Compilando reporte PDF por Instructor ({pdfProgress.current} de {pdfProgress.total})...
+              </span>
+              <span className="font-mono text-rose-700">
+                {Math.round((pdfProgress.current / pdfProgress.total) * 100)}%
+              </span>
+            </div>
+            <div className="w-full bg-rose-200 rounded-full h-2 overflow-hidden mb-1">
+              <div 
+                className="bg-rose-600 h-2 rounded-full transition-all duration-200" 
+                style={{ width: `${Math.round((pdfProgress.current / pdfProgress.total) * 100)}%` }}
+              />
+            </div>
+            <p className="text-[11px] text-rose-700 truncate">
+              Procesando hoja y análisis de: <strong>{pdfProgress.instructor}</strong>
+            </p>
+          </div>
+        )}
+
+        {/* Success / Error Messages */}
+        {pdfSuccessMsg && (
+          <div className="mt-3 p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg text-sm flex items-center gap-2 animate-fadeIn">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>{pdfSuccessMsg}</span>
+          </div>
+        )}
+
+        {pdfError && (
+          <div className="mt-3 p-3 bg-rose-50 border border-rose-200 text-rose-800 rounded-lg text-sm flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+            <span>{pdfError}</span>
+          </div>
+        )}
+
         {/* Success / Error Messages */}
         {syncSuccessMsg && (
           <div className="mt-3 p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-lg text-sm flex items-center gap-2 animate-fadeIn">
@@ -963,6 +1072,47 @@ export default function AnalisisComplementariaView({}: AnalisisComplementariaVie
           </div>
         )}
       </div>
+
+      {/* Zero State / Live Sync Banner */}
+      {fichasComp.length === 0 && (
+        <div className="bg-slate-50 border-2 border-dashed border-emerald-300 rounded-xl p-8 text-center space-y-4 shadow-xs">
+          <div className="w-16 h-16 bg-emerald-100 text-emerald-700 rounded-2xl flex items-center justify-center mx-auto shadow-xs border border-emerald-200">
+            {isSyncing ? (
+              <RefreshCw className="w-8 h-8 animate-spin text-emerald-600" />
+            ) : (
+              <FileSpreadsheet className="w-8 h-8 text-emerald-600" />
+            )}
+          </div>
+          <div className="max-w-xl mx-auto">
+            <h3 className="text-lg font-bold text-slate-800">
+              {isSyncing ? 'Sincronizando con Google Drive...' : 'Módulo iniciado en ceros (Sin datos)'}
+            </h3>
+            <p className="text-sm text-slate-600 mt-1">
+              {isSyncing 
+                ? 'Conectando con la carpeta oficial de Google Drive y leyendo el reporte PE-04 en vivo...'
+                : 'La información se mostrará automáticamente al sincronizar con el Drive oficial o al cargar el archivo PE-04 manualmente.'}
+            </p>
+          </div>
+          {!isSyncing && (
+            <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+              <button
+                onClick={() => handleSyncFromDrive(false, true)}
+                className="inline-flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold rounded-lg shadow-xs transition-all active:scale-95"
+              >
+                <RefreshCw className="w-4 h-4" />
+                Sincronizar ahora con Google Drive
+              </button>
+              <button
+                onClick={() => setActiveSubTab('cargar')}
+                className="inline-flex items-center gap-2 px-5 py-2.5 bg-white hover:bg-slate-100 text-slate-700 text-sm font-semibold rounded-lg border border-slate-300 shadow-xs transition-all"
+              >
+                <Upload className="w-4 h-4 text-emerald-600" />
+                Cargar archivo Excel / XML
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Navigation Sub-Tabs */}
       <div className="flex items-center gap-2 border-b border-slate-200 pb-2 overflow-x-auto">
@@ -2410,6 +2560,7 @@ export default function AnalisisComplementariaView({}: AnalisisComplementariaVie
                   <th className="py-3 px-3 text-center">Horas Hombre</th>
                   <th className="py-3 px-3">Líneas Temáticas</th>
                   <th className="py-3 px-3">Municipios Atendidos</th>
+                  <th className="py-3 px-3 text-center">Reporte PDF</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200">
@@ -2447,6 +2598,35 @@ export default function AnalisisComplementariaView({}: AnalisisComplementariaVie
                         {Array.from(inst.municipios).slice(0, 3).join(', ')}
                         {inst.municipios.size > 3 && ` (+${inst.municipios.size - 3})`}
                       </div>
+                    </td>
+                    <td className="py-3 px-3 text-center">
+                      <button
+                        onClick={async () => {
+                          try {
+                            setIsGeneratingPdf(true);
+                            setPdfProgress({ current: 1, total: 1, instructor: inst.instructor });
+                            await generateInstructoresComplementariaPDF({
+                              fichas: fichasComp,
+                              selectedInstructor: inst.instructor,
+                              vigencia: '2026',
+                              centro: 'Centro Minero - Regional Boyacá'
+                            });
+                            setPdfSuccessMsg(`¡Reporte PDF de ${inst.instructor} generado con éxito!`);
+                            setTimeout(() => setPdfSuccessMsg(null), 6000);
+                          } catch (err: any) {
+                            setPdfError(err?.message || 'Error al generar el PDF.');
+                          } finally {
+                            setIsGeneratingPdf(false);
+                            setPdfProgress(null);
+                          }
+                        }}
+                        disabled={isGeneratingPdf}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 transition-colors disabled:opacity-50"
+                        title={`Descargar análisis en PDF de ${inst.instructor}`}
+                      >
+                        <FileText className="w-3.5 h-3.5" />
+                        PDF
+                      </button>
                     </td>
                   </tr>
                 ))}

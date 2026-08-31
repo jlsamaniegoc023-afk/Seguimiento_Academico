@@ -445,7 +445,7 @@ export default function AnalisisDF14View() {
   // States
   const [fichasData, setFichasData] = useState<FichaDF14[]>(() => {
     try {
-      const saved = localStorage.getItem('sena_df14_xml_parsed_data');
+      const saved = sessionStorage.getItem('sena_df14_xml_parsed_data');
       return saved ? JSON.parse(saved) : INITIAL_FICHAS;
     } catch (e) {
       return INITIAL_FICHAS;
@@ -453,12 +453,12 @@ export default function AnalisisDF14View() {
   });
 
   const [lastUpdated, setLastUpdated] = useState<string>(() => {
-    return localStorage.getItem('sena_df14_last_updated') || '08/06/2026 10:30 a.m.';
+    return sessionStorage.getItem('sena_df14_last_updated') || '08/06/2026 10:30 a.m.';
   });
 
   const [selectedFichaId, setSelectedFichaId] = useState<string>('3456305');
   const [loadedFileName, setLoadedFileName] = useState<string | null>(() => {
-    return localStorage.getItem('sena_df14_file_name') || null;
+    return sessionStorage.getItem('sena_df14_file_name') || null;
   });
 
   // Google Drive Sync State
@@ -467,14 +467,14 @@ export default function AnalisisDF14View() {
   const DEFAULT_FILE_ID = '1Ll1g7SmYMytc5qhmI1llL1l0tBfMqe5X';
   const [showDriveModal, setShowDriveModal] = useState<boolean>(false);
   const [driveUrl, setDriveUrl] = useState<string>(() => {
-    return localStorage.getItem('sena_df14_drive_url') || DEFAULT_DRIVE_FOLDER_URL;
+    return sessionStorage.getItem('sena_df14_drive_url') || DEFAULT_DRIVE_FOLDER_URL;
   });
   const [isSyncingDrive, setIsSyncingDrive] = useState<boolean>(false);
   const [driveSyncError, setDriveSyncError] = useState<string | null>(null);
   const [driveSyncSuccess, setDriveSyncSuccess] = useState<string | null>(null);
   const [pastedXml, setPastedXml] = useState<string>('');
   const [lastDriveSync, setLastDriveSync] = useState<string | null>(() => {
-    return localStorage.getItem('sena_df14_last_drive_sync') || null;
+    return sessionStorage.getItem('sena_df14_last_drive_sync') || null;
   });
 
   // Pagination State
@@ -744,9 +744,9 @@ export default function AnalisisDF14View() {
       setSelectedFichaId(extractedFichas[0].ficha);
       setCurrentPage(1);
 
-      localStorage.setItem('sena_df14_xml_parsed_data', JSON.stringify(extractedFichas));
-      localStorage.setItem('sena_df14_last_updated', formattedDate);
-      localStorage.setItem('sena_df14_file_name', fileName);
+      sessionStorage.setItem('sena_df14_xml_parsed_data', JSON.stringify(extractedFichas));
+      sessionStorage.setItem('sena_df14_last_updated', formattedDate);
+      sessionStorage.setItem('sena_df14_file_name', fileName);
 
       alert(`¡Archivo XML '${fileName}' analizado con éxito!\nSe procesaron y cargaron las ${extractedFichas.length.toLocaleString('es-CO')} fichas del reporte XML.`);
     } catch (err: any) {
@@ -776,7 +776,7 @@ export default function AnalisisDF14View() {
     setDriveSyncSuccess(null);
 
     try {
-      localStorage.setItem('sena_df14_drive_url', driveUrl);
+      sessionStorage.setItem('sena_df14_drive_url', driveUrl);
 
       // Extract File or Folder ID from URL
       let targetFileId = DEFAULT_FILE_ID;
@@ -854,7 +854,7 @@ export default function AnalisisDF14View() {
         const now = new Date();
         const formattedDate = `${now.toLocaleDateString('es-CO')} ${now.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}`;
         setLastDriveSync(formattedDate);
-        localStorage.setItem('sena_df14_last_drive_sync', formattedDate);
+        sessionStorage.setItem('sena_df14_last_drive_sync', formattedDate);
         setDriveSyncSuccess(`¡Sincronización con Google Drive exitosa! Se verificó la información de la carpeta compartida y se analizó el reporte XML (DF-14A_1.xml).`);
       } else {
         throw new Error('No se pudo obtener el archivo XML desde la carpeta de Google Drive.');
@@ -876,7 +876,7 @@ export default function AnalisisDF14View() {
     const now = new Date();
     const formattedDate = `${now.toLocaleDateString('es-CO')} ${now.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}`;
     setLastDriveSync(formattedDate);
-    localStorage.setItem('sena_df14_last_drive_sync', formattedDate);
+    sessionStorage.setItem('sena_df14_last_drive_sync', formattedDate);
     setShowDriveModal(false);
     setPastedXml('');
   };
@@ -899,9 +899,9 @@ export default function AnalisisDF14View() {
       setLastUpdated('08/06/2026 10:30 a.m.');
       setLoadedFileName(null);
       setSelectedFichaId('3456305');
-      localStorage.removeItem('sena_df14_xml_parsed_data');
-      localStorage.removeItem('sena_df14_last_updated');
-      localStorage.removeItem('sena_df14_file_name');
+      sessionStorage.removeItem('sena_df14_xml_parsed_data');
+      sessionStorage.removeItem('sena_df14_last_updated');
+      sessionStorage.removeItem('sena_df14_file_name');
     }
   };
 
@@ -916,10 +916,10 @@ export default function AnalisisDF14View() {
       setDriveSyncError(null);
       const nowStr = new Date().toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' });
       setLastUpdated(nowStr);
-      localStorage.setItem('sena_df14_xml_parsed_data', JSON.stringify([]));
-      localStorage.setItem('sena_df14_last_updated', nowStr);
-      localStorage.setItem('sena_df14_file_name', 'Sin datos (Vista Limpia)');
-      localStorage.removeItem('sena_df14_last_drive_sync');
+      sessionStorage.setItem('sena_df14_xml_parsed_data', JSON.stringify([]));
+      sessionStorage.setItem('sena_df14_last_updated', nowStr);
+      sessionStorage.setItem('sena_df14_file_name', 'Sin datos (Vista Limpia)');
+      sessionStorage.removeItem('sena_df14_last_drive_sync');
       handleResetFilters();
     }
   };

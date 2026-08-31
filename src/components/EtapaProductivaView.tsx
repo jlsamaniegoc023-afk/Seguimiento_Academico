@@ -101,7 +101,7 @@ export default function EtapaProductivaView({
 
   const [epData, setEpData] = useState<{ [doc: string]: EpDetail[] }>(() => {
     try {
-      const saved = localStorage.getItem('sena_ep_details');
+      const saved = sessionStorage.getItem('sena_ep_details');
       return saved ? JSON.parse(saved) : {};
     } catch (e) {
       console.error(e);
@@ -401,7 +401,9 @@ export default function EtapaProductivaView({
         });
 
         setEpData(newEpData);
-        localStorage.setItem('sena_ep_details', JSON.stringify(newEpData));
+        try {
+          sessionStorage.setItem('sena_ep_details', JSON.stringify(newEpData));
+        } catch {}
 
         setAnalysisSummary({
           fileName: file.name,

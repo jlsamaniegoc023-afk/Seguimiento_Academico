@@ -1,6 +1,8 @@
 import * as XLSX from 'xlsx';
 import { FichaComplementaria } from '../types';
-import { INITIAL_COMPLEMENTARIA_DATA, COMPLEMENTARIA_DRIVE_FOLDER_URL, COMPLEMENTARIA_DRIVE_FILE_ID } from '../data/complementariaSampleData';
+
+export const COMPLEMENTARIA_DRIVE_FOLDER_URL = 'https://drive.google.com/drive/folders/1DqBcInloI9_V2P4g4LxJMum1F5ZDJJ0y?usp=sharing';
+export const COMPLEMENTARIA_DRIVE_FILE_ID = '1ZEqmMzr_MuB4wdlQlw1ldXe78WeR7S9Q';
 
 export const DRIVE_FOLDER_URL = COMPLEMENTARIA_DRIVE_FOLDER_URL;
 export const DRIVE_FILE_ID = COMPLEMENTARIA_DRIVE_FILE_ID;
@@ -20,21 +22,9 @@ export interface SyncInfo {
 export function getDF14FichaMap(): Map<string, { certificados: number; porCertificar: number; enFormacion?: number; desertores?: number }> {
   const map = new Map<string, { certificados: number; porCertificar: number; enFormacion?: number; desertores?: number }>();
   
-  // 1. From INITIAL_COMPLEMENTARIA_DATA
-  INITIAL_COMPLEMENTARIA_DATA.forEach(f => {
-    if (f.ficha) {
-      map.set(f.ficha.trim(), {
-        certificados: f.certificados || 0,
-        porCertificar: f.porCertificar || 0,
-        enFormacion: f.enFormacion || 0,
-        desertores: f.desertores || 0
-      });
-    }
-  });
-
-  // 2. From localStorage DF-14 parsed data if available in browser
+  // From sessionStorage DF-14 parsed data if available in browser
   try {
-    const rawDF14 = localStorage.getItem('sena_df14_xml_parsed_data');
+    const rawDF14 = sessionStorage.getItem('sena_df14_xml_parsed_data');
     if (rawDF14) {
       const parsed = JSON.parse(rawDF14);
       if (Array.isArray(parsed)) {
@@ -51,7 +41,7 @@ export function getDF14FichaMap(): Map<string, { certificados: number; porCertif
       }
     }
   } catch (e) {
-    console.warn('Error reading DF14 data from localStorage:', e);
+    console.warn('Error reading DF14 data from sessionStorage:', e);
   }
 
   return map;
@@ -59,24 +49,10 @@ export function getDF14FichaMap(): Map<string, { certificados: number; porCertif
 
 export function clearComplementariaCache(): void {
   try {
+    sessionStorage.removeItem(STORAGE_KEY);
+    sessionStorage.removeItem(STORAGE_SYNC_KEY);
     localStorage.removeItem(STORAGE_KEY);
     localStorage.removeItem(STORAGE_SYNC_KEY);
-    localStorage.removeItem('sena_analisis_complementaria_data_v9');
-    localStorage.removeItem('sena_analisis_complementaria_sync_info_v9');
-    localStorage.removeItem('sena_analisis_complementaria_data_v8');
-    localStorage.removeItem('sena_analisis_complementaria_sync_info_v8');
-    localStorage.removeItem('sena_analisis_complementaria_data_v7');
-    localStorage.removeItem('sena_analisis_complementaria_sync_info_v7');
-    localStorage.removeItem('sena_analisis_complementaria_data_v6');
-    localStorage.removeItem('sena_analisis_complementaria_sync_info_v6');
-    localStorage.removeItem('sena_analisis_complementaria_data_v5');
-    localStorage.removeItem('sena_analisis_complementaria_sync_info_v5');
-    localStorage.removeItem('sena_analisis_complementaria_data_v4');
-    localStorage.removeItem('sena_analisis_complementaria_sync_info_v4');
-    localStorage.removeItem('sena_analisis_complementaria_data_v3');
-    localStorage.removeItem('sena_analisis_complementaria_sync_info_v3');
-    localStorage.removeItem('sena_analisis_complementaria_data_v2');
-    localStorage.removeItem('sena_analisis_complementaria_sync_info_v2');
   } catch (e) {
     console.warn('Error clearing complementaria cache:', e);
   }
@@ -84,8 +60,8 @@ export function clearComplementariaCache(): void {
 
 export function getCachedComplementaria(): { data: FichaComplementaria[]; syncInfo: SyncInfo | null } {
   try {
-    const rawData = localStorage.getItem(STORAGE_KEY);
-    const rawSync = localStorage.getItem(STORAGE_SYNC_KEY);
+    const rawData = sessionStorage.getItem(STORAGE_KEY);
+    const rawSync = sessionStorage.getItem(STORAGE_SYNC_KEY);
     
     if (rawData) {
       const data = JSON.parse(rawData);
@@ -98,23 +74,17 @@ export function getCachedComplementaria(): { data: FichaComplementaria[]; syncIn
     console.warn('Error reading complementaria cache:', e);
   }
 
-  // Retornar datos base extraídos del reporte PE-04
+  // Iniciar en ceros cuando no hay datos sincronizados o cargados
   return {
-    data: INITIAL_COMPLEMENTARIA_DATA,
-    syncInfo: {
-      source: 'Google Drive PE-04 (Centro Minero)',
-      syncDate: new Date().toLocaleString('es-CO'),
-      totalRecords: INITIAL_COMPLEMENTARIA_DATA.length,
-      fileName: 'PE-04_1.xml',
-      status: 'cached'
-    }
+    data: [],
+    syncInfo: null
   };
 }
 
 export function saveCachedComplementaria(data: FichaComplementaria[], syncInfo: SyncInfo): void {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-    localStorage.setItem(STORAGE_SYNC_KEY, JSON.stringify(syncInfo));
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    sessionStorage.setItem(STORAGE_SYNC_KEY, JSON.stringify(syncInfo));
   } catch (e) {
     console.warn('Error saving complementaria cache:', e);
   }
@@ -398,6 +368,7 @@ export async function fetchComplementariaFromDrive(customFolderUrl?: string, for
 
   let wb: XLSX.WorkBook | null = null;
   let syncSource = `Google Drive (Carpeta: ${folderId})`;
+  let finalFileName = 'PE-04_1.xml';
 
   // 1. Intento principal vía proxy backend (escaneo dinámico de la carpeta oficial de Google Drive)
   try {
@@ -408,16 +379,24 @@ export async function fetchComplementariaFromDrive(customFolderUrl?: string, for
         'Pragma': 'no-cache',
         'Cache-Control': 'no-cache, no-store, must-revalidate'
       }
-    }, 12000);
+    }, 15000);
 
     if (resp.ok) {
       const buffer = await resp.arrayBuffer();
       if (buffer.byteLength > 1000) {
         wb = XLSX.read(buffer, { type: 'array' });
         const resolvedId = resp.headers.get('x-drive-file-id');
+        const headerName = resp.headers.get('x-drive-file-name');
+        if (headerName) {
+          try {
+            finalFileName = decodeURIComponent(headerName);
+          } catch (e) {
+            finalFileName = headerName;
+          }
+        }
         syncSource = resolvedId 
-          ? `Google Drive Carpeta Oficial en Vivo (${resolvedId})` 
-          : 'Google Drive Carpeta Oficial en Vivo';
+          ? `Google Drive Carpeta Oficial (${resolvedId})` 
+          : 'Google Drive Carpeta Oficial';
       }
     }
   } catch (e) {
@@ -431,7 +410,13 @@ export async function fetchComplementariaFromDrive(customFolderUrl?: string, for
       if (!candId) continue;
       try {
         const driveDirectUrl = `https://drive.usercontent.google.com/download?id=${candId}&export=download&confirm=t&_t=${Date.now()}`;
-        const resp = await fetchWithTimeout(driveDirectUrl, { cache: 'no-store' }, 8000);
+        const resp = await fetchWithTimeout(driveDirectUrl, { 
+          cache: 'no-store',
+          headers: {
+            'Pragma': 'no-cache',
+            'Cache-Control': 'no-cache, no-store, must-revalidate'
+          }
+        }, 10000);
         if (resp.ok) {
           const buffer = await resp.arrayBuffer();
           if (buffer.byteLength > 1000) {
@@ -522,19 +507,22 @@ export async function fetchComplementariaFromDrive(customFolderUrl?: string, for
     }
   }
 
-  // Si fallan todas las descargas en vivo por restricciones de red/CORS, recurrir al dataset sincronizado
+  // Si fallan todas las descargas en vivo
   if (!wb || !wb.SheetNames || wb.SheetNames.length === 0) {
-    console.log('Utilizando dataset sincronizado de respaldo para PE-04.');
     const cached = getCachedComplementaria();
-    const syncInfo: SyncInfo = {
-      source: 'Google Drive PE-04 (Dataset Sincronizado)',
-      syncDate: new Date().toLocaleString('es-CO'),
-      totalRecords: cached.data.length,
-      fileName: 'PE-04_1.xml',
-      status: 'synced'
-    };
-    saveCachedComplementaria(cached.data, syncInfo);
-    return { data: cached.data, syncInfo };
+    if (cached.data.length > 0) {
+      return { 
+        data: cached.data, 
+        syncInfo: cached.syncInfo || {
+          source: 'Datos en memoria local',
+          syncDate: new Date().toLocaleString('es-CO'),
+          totalRecords: cached.data.length,
+          fileName: finalFileName,
+          status: 'cached'
+        }
+      };
+    }
+    throw new Error('No se pudo descargar el archivo de Formación Complementaria desde Google Drive. Verifique la conexión o cargue el archivo manualmente.');
   }
 
   const parsed = parseComplementariaWorkbook(wb, syncSource);
@@ -542,7 +530,7 @@ export async function fetchComplementariaFromDrive(customFolderUrl?: string, for
     source: syncSource,
     syncDate: new Date().toLocaleString('es-CO'),
     totalRecords: parsed.length,
-    fileName: 'PE-04_1.xml',
+    fileName: finalFileName,
     status: 'synced'
   };
 

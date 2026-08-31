@@ -84,9 +84,27 @@ export default function SeguimientoEPView({
   const DEFAULT_EP_DRIVE_FOLDER = 'https://drive.google.com/drive/folders/1SgTxkngCSZvUk5vYYqaC8K_EdDdnwDXT';
   const [showDriveModal, setShowDriveModal] = useState(false);
   const [syncNotice, setSyncNotice] = useState<string | null>(null);
-  const [driveUrlInput, setDriveUrlInput] = useState(() => localStorage.getItem('sena_seguimiento_ep_drive_url') || DEFAULT_EP_DRIVE_FOLDER);
-  const [connectedDriveUrl, setConnectedDriveUrl] = useState(() => localStorage.getItem('sena_seguimiento_ep_drive_url') || DEFAULT_EP_DRIVE_FOLDER);
-  const [lastSyncTime, setLastSyncTime] = useState(() => localStorage.getItem('sena_seguimiento_ep_sync_time') || '');
+  const [driveUrlInput, setDriveUrlInput] = useState(() => {
+    try {
+      return sessionStorage.getItem('sena_seguimiento_ep_drive_url') || DEFAULT_EP_DRIVE_FOLDER;
+    } catch {
+      return DEFAULT_EP_DRIVE_FOLDER;
+    }
+  });
+  const [connectedDriveUrl, setConnectedDriveUrl] = useState(() => {
+    try {
+      return sessionStorage.getItem('sena_seguimiento_ep_drive_url') || DEFAULT_EP_DRIVE_FOLDER;
+    } catch {
+      return DEFAULT_EP_DRIVE_FOLDER;
+    }
+  });
+  const [lastSyncTime, setLastSyncTime] = useState(() => {
+    try {
+      return sessionStorage.getItem('sena_seguimiento_ep_sync_time') || '';
+    } catch {
+      return '';
+    }
+  });
   const [isSyncingDrive, setIsSyncingDrive] = useState(false);
   const [driveError, setDriveError] = useState<string | null>(null);
   const [syncFichaInput, setSyncFichaInput] = useState('');
@@ -113,26 +131,30 @@ export default function SeguimientoEPView({
 
   const [records, setRecords] = useState<SeguimientoEPRecord[]>(() => {
     try {
-      const saved = localStorage.getItem('sena_seguimiento_ep_data');
+      const saved = sessionStorage.getItem('sena_seguimiento_ep_data');
       return saved ? JSON.parse(saved) : [];
     } catch (e) {
-      console.error('Error loading tracking EP data from localStorage:', e);
+      console.error('Error loading tracking EP data from sessionStorage:', e);
       return [];
     }
   });
 
   const [fileName, setFileName] = useState<string>(() => {
-    return localStorage.getItem('sena_seguimiento_ep_filename') || '';
+    try {
+      return sessionStorage.getItem('sena_seguimiento_ep_filename') || '';
+    } catch {
+      return '';
+    }
   });
 
   const saveRecords = (newRecords: SeguimientoEPRecord[], name: string) => {
     setRecords(newRecords);
     setFileName(name);
     try {
-      localStorage.setItem('sena_seguimiento_ep_data', JSON.stringify(newRecords));
-      localStorage.setItem('sena_seguimiento_ep_filename', name);
+      sessionStorage.setItem('sena_seguimiento_ep_data', JSON.stringify(newRecords));
+      sessionStorage.setItem('sena_seguimiento_ep_filename', name);
     } catch (e) {
-      console.error('Error saving tracking EP data to localStorage:', e);
+      console.error('Error saving tracking EP data to sessionStorage:', e);
     }
   };
 
@@ -509,8 +531,10 @@ export default function SeguimientoEPView({
       const nowStr = new Date().toLocaleString('es-CO', { dateStyle: 'short', timeStyle: 'short' });
       setConnectedDriveUrl(url);
       setLastSyncTime(nowStr);
-      localStorage.setItem('sena_seguimiento_ep_drive_url', url);
-      localStorage.setItem('sena_seguimiento_ep_sync_time', nowStr);
+      try {
+        sessionStorage.setItem('sena_seguimiento_ep_drive_url', url);
+        sessionStorage.setItem('sena_seguimiento_ep_sync_time', nowStr);
+      } catch {}
 
       if (parsedFromDrive.length > 0) {
         // Replace/update records for this ficha or merge
