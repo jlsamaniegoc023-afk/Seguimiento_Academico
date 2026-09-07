@@ -1,30 +1,35 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import * as XLSX from 'xlsx';
 import { ProgramacionRow, SofiaRow, FichaMeta } from '../types';
-import { 
-  Clock, 
-  UserCheck, 
-  Upload, 
-  Search, 
-  Download, 
-  Plus, 
-  Edit, 
-  Trash2, 
-  CheckCircle2, 
-  TrendingUp, 
-  BarChart2, 
-  Users, 
-  BookOpen, 
-  X, 
+import {
+  Clock,
+  UserCheck,
+  Upload,
+  Search,
+  Download,
+  Plus,
+  Edit,
+  Trash2,
+  CheckCircle2,
+  TrendingUp,
+  BarChart2,
+  Users,
+  BookOpen,
+  X,
   Calendar,
   Layers,
   Globe,
   RefreshCw,
-  FileSpreadsheet
+  FileSpreadsheet,
+  FileText,
+  AlertTriangle,
+  Loader2,
+  ShieldAlert
 } from 'lucide-react';
 import { INITIAL_DEMO_RECORDS, DEFAULT_DRIVE_SHEET_URL } from '../data/senaSampleData';
 import { ComposicionChart, VinculacionChart } from './HorasCharts';
 import { InstructorIndividualView } from './InstructorIndividualView';
+import { generateInstructoresTiemposPDF } from '../services/instructorTiemposPdfService';
 
 export interface ReporteHorasRecord {
   id: string;
@@ -38,7 +43,7 @@ export interface ReporteHorasRecord {
   competencia: string;
   horasProgramadas: number;
   horasEjecutadas: number;
-  
+
   // Consolidado SENA Fields
   horasTituladaLectiva?: number;
   horasComplementaria?: number;
@@ -135,7 +140,13 @@ export default function HorasReportadasView({
   });
   const [isSyncingDrive, setIsSyncingDrive] = useState(false);
   const [driveError, setDriveError] = useState<string | null>(null);
-  
+
+  // PDF Report Generation States
+  const [showPdfModal, setShowPdfModal] = useState(false);
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+  const [pdfProgress, setPdfProgress] = useState<{ current: number; total: number; name: string } | null>(null);
+  const [pdfError, setPdfError] = useState<string | null>(null);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Saved custom reports in sessionStorage
@@ -175,7 +186,7 @@ export default function HorasReportadasView({
   // Convert SOFIA rows into ReporteHorasRecord format
   const sofiaRecords = useMemo<ReporteHorasRecord[]>(() => {
     if (!rows || rows.length === 0) return [];
-    
+
     return rows.map((r, idx) => {
       const hEjec = Number(r.horasImpartidas) || 0;
       return {
@@ -204,10 +215,10 @@ export default function HorasReportadasView({
     const monthsSet = new Set<string>();
     combinedRecords.forEach(r => {
       if (
-        r.hoja && 
-        r.hoja !== 'SOFIA' && 
-        r.hoja !== 'Google Drive' && 
-        !/^\d+$/.test(r.hoja) && 
+        r.hoja &&
+        r.hoja !== 'SOFIA' &&
+        r.hoja !== 'Google Drive' &&
+        !/^\d+$/.test(r.hoja) &&
         !r.hoja.toUpperCase().startsWith('REGIONAL')
       ) {
         const cleanH = r.hoja.trim();
@@ -269,7 +280,7 @@ export default function HorasReportadasView({
       fichasCount: number;
     }>();
 
-    // Populate map directly from monthFilteredRecords so that selecting a month/sheet shows 
+    // Populate map directly from monthFilteredRecords so that selecting a month/sheet shows
     // the complete information for instructors related to that month
     monthFilteredRecords.forEach(r => {
       const cleanName = cleanInstructorName(r.instructor || 'INSTRUCTOR SIN NOMBRE');
@@ -324,8 +335,8 @@ export default function HorasReportadasView({
     // Filter by search query
     if (query.trim()) {
       const q = query.toLowerCase().trim();
-      result = result.filter(i => 
-        i.instructor.toLowerCase().includes(q) || 
+      result = result.filter(i =>
+        i.instructor.toLowerCase().includes(q) ||
         i.documento.includes(q)
       );
     }
@@ -368,10 +379,10 @@ export default function HorasReportadasView({
 
   // Special Activities instructores (only instructores with special hours > 0)
   const instructoresActividadesEspeciales = useMemo(() => {
-    let list = consolidadoInstructores.filter(i => 
-      i.disenoCurricular > 0 || 
-      i.investigacionAplicada > 0 || 
-      i.aseguramientoCalidad > 0 || 
+    let list = consolidadoInstructores.filter(i =>
+      i.disenoCurricular > 0 ||
+      i.investigacionAplicada > 0 ||
+      i.aseguramientoCalidad > 0 ||
       i.otrosActividades > 0
     );
 
@@ -387,10 +398,21 @@ export default function HorasReportadasView({
     });
   }, [consolidadoInstructores, searchSpecial]);
 
-  // Helper row background styling based on total hours
+  // Helper row background styling based on total hours and alert thresholds:
+  // < 100h: Alerta Baja | 100 - 140h: Alerta Intermedia | > 190h: Alerta Sobrecarga
   const getRowBgClass = (total: number) => {
-    if (total >= 0 && total < 99) return 'bg-[#FDEAEA] hover:bg-[#FADADA] border-b border-rose-200/80';
-    if (total >= 99 && total <= 120) return 'bg-[#FEF7DC] hover:bg-[#FCEEB8] border-b border-amber-200/80';
+    // Si estamos en un mes específico, aplicar los umbrales directos
+    if (selectedMonth !== 'GENERAL' && selectedMonth !== 'TODOS') {
+      if (total >= 0 && total < 100) return 'bg-[#FDEAEA] hover:bg-[#FADADA] border-b border-rose-200/80';
+      if (total >= 100 && total <= 140) return 'bg-[#FEF7DC] hover:bg-[#FCEEB8] border-b border-amber-200/80';
+      if (total > 190) return 'bg-[#F5EEFD] hover:bg-[#EDE0FB] border-b border-purple-200/80';
+      return 'hover:bg-emerald-50/40 border-b border-slate-100';
+    }
+    // En consolidado general acumulado, calculamos respecto al promedio mensual estimado (~5 meses)
+    const avg = monthsList.length > 0 ? (total / monthsList.length) : (total / 5);
+    if (avg < 100) return 'bg-[#FDEAEA] hover:bg-[#FADADA] border-b border-rose-200/80';
+    if (avg >= 100 && avg <= 140) return 'bg-[#FEF7DC] hover:bg-[#FCEEB8] border-b border-amber-200/80';
+    if (avg > 190) return 'bg-[#F5EEFD] hover:bg-[#EDE0FB] border-b border-purple-200/80';
     return 'hover:bg-emerald-50/40 border-b border-slate-100';
   };
 
@@ -416,7 +438,7 @@ export default function HorasReportadasView({
 
   const extractInstructorNameAndDetails = (rowCells: any[], headerRow: string[]) => {
     const cleanHeaders = headerRow.map(h => cleanStr(h));
-    
+
     let nombres = '';
     let apellidos = '';
     let combined = '';
@@ -440,16 +462,16 @@ export default function HorasReportadasView({
         const val = String(rowCells[idx] || '').trim();
         if (!val) return;
 
-        const isIgnored = 
-          h.includes('regional') || h.includes('centro') || h.includes('programa') || 
-          h.includes('ficha') || h.includes('coordinador') || h.includes('entidad') || 
+        const isIgnored =
+          h.includes('regional') || h.includes('centro') || h.includes('programa') ||
+          h.includes('ficha') || h.includes('coordinador') || h.includes('entidad') ||
           h.includes('empresa') || h.includes('sede') || h.includes('modulo') ||
           h.includes('linea') || h.includes('red') || h.includes('area') || h.includes('nivel') ||
           h.includes('departamento') || h.includes('municipio') || h.includes('depto');
 
         if (isIgnored) return;
 
-        const isExplicitCombined = 
+        const isExplicitCombined =
           (h.includes('nombre') && h.includes('apellido')) ||
           h === 'nombrecompleto' || h === 'nombresapellidos' || h === 'apellidosnombres' ||
           h === 'nombreinstructor' || h === 'instructor';
@@ -499,7 +521,7 @@ export default function HorasReportadasView({
       let bestHeaderRowIdx = 0;
       let maxScore = -1;
       const headerKeywords = [
-        'nombre', 'nombres', 'apellido', 'apellidos', 'instructor', 'documento', 
+        'nombre', 'nombres', 'apellido', 'apellidos', 'instructor', 'documento',
         'cedula', 'identificacion', 'vinculacion', 'mes', 'titulada', 'complementaria', 'horas'
       ];
 
@@ -783,9 +805,34 @@ export default function HorasReportadasView({
     }
   };
 
+  // Handler for PDF Report Generation with Alert Analysis
+  const handleGeneratePdf = async (targetId?: string) => {
+    setIsGeneratingPdf(true);
+    setPdfError(null);
+    setPdfProgress({ current: 0, total: 1, name: 'Analizando registros y preparando informe...' });
+    try {
+      await generateInstructoresTiemposPDF({
+        records: combinedRecords,
+        monthsList,
+        selectedInstructorId: targetId || null,
+        onProgress: (current, total, name) => {
+          setPdfProgress({ current, total, name });
+        }
+      });
+      setShowPdfModal(false);
+      setImportNotice('¡Informe PDF de Tiempos y Alertas de Instructores generado y descargado con éxito!');
+    } catch (err: any) {
+      console.error('Error generando PDF de tiempos:', err);
+      setPdfError(err.message || 'Error al compilar el documento PDF.');
+    } finally {
+      setIsGeneratingPdf(false);
+      setPdfProgress(null);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-[#F4F8F3] -m-4 md:-m-8 p-4 md:p-8 font-sans text-[#1F2A24]">
-      
+
       {/* HEADER PRINCIPAL SENA CENTRO MINERO */}
       <header className="bg-gradient-to-r from-[#39A900] to-[#2C7A00] text-white rounded-2xl p-6 shadow-md mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
@@ -814,6 +861,15 @@ export default function HorasReportadasView({
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isSyncingDrive ? 'animate-spin' : ''}`} />
             <span>{isSyncingDrive ? 'Sincronizando...' : 'Sincronizar Drive'}</span>
+          </button>
+
+          <button
+            onClick={() => setShowPdfModal(true)}
+            className="px-3.5 py-2 bg-white text-[#2C7A00] hover:bg-emerald-50 font-extrabold rounded-xl text-xs uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1.5 shadow-xs border border-white"
+            title="Generar informe PDF con matriz de alertas y hoja de tiempos por instructor"
+          >
+            <FileText className="w-3.5 h-3.5 text-[#2C7A00]" />
+            <span>Generar PDF Tiempos & Alertas</span>
           </button>
 
           <button
@@ -890,7 +946,7 @@ export default function HorasReportadasView({
               <Calendar className="w-4 h-4 text-[#39A900]" />
               <span>Ver por Hoja / Mes:</span>
             </span>
-            
+
             <button
               onClick={() => setSelectedMonth('GENERAL')}
               className={`px-4 py-2 rounded-full border-2 text-xs font-extrabold transition-all cursor-pointer flex items-center gap-1.5 ${
@@ -958,7 +1014,7 @@ export default function HorasReportadasView({
 
           {/* CHARTS GRID */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            
+
             <div className="bg-white border border-[#DCE5DC] rounded-xl p-5 shadow-xs">
               <h3 className="text-base font-bold text-[#1F2A24] flex items-center gap-2">
                 <span>Formación vs. Apoyo —</span>
@@ -966,7 +1022,7 @@ export default function HorasReportadasView({
               </h3>
               <p className="text-xs text-[#5B6B62] mb-3">Composición de horas ejecutadas</p>
               <div className="h-64">
-                <ComposicionChart 
+                <ComposicionChart
                   totalFormacion={consolidadoKPIs.totalFormacion}
                   totalAdicionales={consolidadoKPIs.totalAdicionales}
                 />
@@ -988,23 +1044,43 @@ export default function HorasReportadasView({
 
           {/* DETALLE POR INSTRUCTOR TABLE CARD */}
           <div className="bg-white border border-[#DCE5DC] rounded-xl p-5 shadow-xs space-y-4">
-            <div>
-              <h3 className="text-base font-bold text-[#1F2A24] flex items-center gap-2">
-                <span>Detalle por Instructor —</span>
-                <span className="text-[#39A900]">{labelActiveView}</span>
-              </h3>
-              <p className="text-xs text-[#5B6B62] mt-0.5">Nombre, tipo de vinculación y horas ejecutadas</p>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h3 className="text-base font-bold text-[#1F2A24] flex items-center gap-2">
+                  <span>Detalle por Instructor —</span>
+                  <span className="text-[#39A900]">{labelActiveView}</span>
+                </h3>
+                <p className="text-xs text-[#5B6B62] mt-0.5">Nombre, tipo de vinculación, horas ejecutadas y clasificación de alertas</p>
+              </div>
+
+              <button
+                onClick={() => setShowPdfModal(true)}
+                className="px-3.5 py-2 bg-[#EAF7E0] hover:bg-[#d5eed0] text-[#2C7A00] font-extrabold rounded-xl text-xs transition-all flex items-center gap-1.5 border border-[#39A900]/40 cursor-pointer shadow-xs self-start sm:self-auto"
+                title="Generar informe PDF con matriz de alertas y hojas de tiempo por instructor"
+              >
+                <FileText className="w-4 h-4 text-[#39A900]" />
+                <span>Generar Informe PDF (Alertas & Tiempos)</span>
+              </button>
             </div>
 
-            {/* COLOR LEGEND ROW */}
-            <div className="flex flex-wrap items-center gap-4 text-xs text-[#5B6B62] font-semibold pt-1">
-              <div className="flex items-center gap-2">
+            {/* COLOR LEGEND ROW WITH 4 ALERT THRESHOLDS */}
+            <div className="flex flex-wrap items-center gap-3.5 text-xs text-[#5B6B62] font-semibold pt-1 border-t border-slate-100">
+              <span className="text-[11px] font-black uppercase text-slate-500 tracking-wider">Criterios de Alerta:</span>
+              <div className="flex items-center gap-1.5">
                 <span className="w-3.5 h-3.5 rounded bg-[#FDEAEA] border border-rose-300 inline-block"></span>
-                <span>Total Horas Instructor entre 0 y 99</span>
+                <span>🚨 Alerta Baja Carga (&lt; 100h / mes)</span>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5">
                 <span className="w-3.5 h-3.5 rounded bg-[#FEF7DC] border border-amber-300 inline-block"></span>
-                <span>Total Horas Instructor entre 99 y 120</span>
+                <span>⚠️ Alerta Intermedia (100–140h / mes)</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="w-3.5 h-3.5 rounded bg-white border border-slate-300 inline-block"></span>
+                <span>🟢 Rango Óptimo (140–190h / mes)</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="w-3.5 h-3.5 rounded bg-[#F5EEFD] border border-purple-300 inline-block"></span>
+                <span>🔴 Alerta Sobrecarga (&gt; 190h / mes)</span>
               </div>
             </div>
 
@@ -1026,46 +1102,97 @@ export default function HorasReportadasView({
                   <tr className="bg-[#EAF7E0] text-[#2C7A00] font-extrabold uppercase text-[10.5px] tracking-wider sticky top-0 z-10 border-b border-[#DCE5DC]">
                     <th className="p-3">Nombre</th>
                     <th className="p-3">Tipo de Vinculación</th>
-                    <th className="p-3 text-right">H. Form. Titulada Etapa Lectiva</th>
-                    <th className="p-3 text-right">H. Formación Complementaria</th>
-                    <th className="p-3 text-right">Total Horas de Formación</th>
-                    <th className="p-3 text-right">Total Horas Adicionales</th>
-                    <th className="p-3 text-right">Total Horas Instructor</th>
+                    <th className="p-3 text-right">H. Form. Titulada</th>
+                    <th className="p-3 text-right">H. Complementaria</th>
+                    <th className="p-3 text-right">Total Formación</th>
+                    <th className="p-3 text-right">Total Apoyo</th>
+                    <th className="p-3 text-right">Total Horas</th>
+                    <th className="p-3 text-center">Estado / Alerta</th>
+                    <th className="p-3 text-center">PDF</th>
                   </tr>
                 </thead>
                 <tbody>
                   {consolidadoInstructores.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="p-8 text-center text-[#5B6B62]">
+                      <td colSpan={9} className="p-8 text-center text-[#5B6B62]">
                         Sin resultados
                       </td>
                     </tr>
                   ) : (
-                    consolidadoInstructores.map((r) => (
-                      <tr key={r.id} className={getRowBgClass(r.totalHorasInstructor)}>
-                        <td className="p-2.5 font-bold uppercase text-slate-800">
-                          {titleCase(r.instructor)}
-                        </td>
-                        <td className="p-2.5">
-                          {renderVincPill(r.vinculacion)}
-                        </td>
-                        <td className="p-2.5 text-right font-medium">
-                          {r.horasTituladaLectiva.toLocaleString('es-CO')}
-                        </td>
-                        <td className="p-2.5 text-right font-medium">
-                          {r.horasComplementaria.toLocaleString('es-CO')}
-                        </td>
-                        <td className="p-2.5 text-right font-extrabold text-slate-900">
-                          {r.totalHorasFormacion.toLocaleString('es-CO')}
-                        </td>
-                        <td className="p-2.5 text-right font-extrabold text-[#1666BA]">
-                          {r.horasAdicionales.toLocaleString('es-CO')}
-                        </td>
-                        <td className="p-2.5 text-right font-black text-slate-900 text-sm">
-                          {r.totalHorasInstructor.toLocaleString('es-CO')}
-                        </td>
-                      </tr>
-                    ))
+                    consolidadoInstructores.map((r) => {
+                      const effectiveHours = r.totalHorasInstructor;
+                      const divisor = monthsList.length > 0 ? monthsList.length : 5;
+                      const monthVal = (selectedMonth === 'GENERAL' || selectedMonth === 'TODOS')
+                        ? (effectiveHours / divisor)
+                        : effectiveHours;
+
+                      let alertBadge = (
+                        <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10.5px] font-extrabold whitespace-nowrap">
+                          🟢 Óptimo ({monthVal.toFixed(0)}h)
+                        </span>
+                      );
+
+                      if (monthVal < 100) {
+                        alertBadge = (
+                          <span className="px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 text-[10.5px] font-extrabold whitespace-nowrap">
+                            🚨 &lt; 100h (Baja)
+                          </span>
+                        );
+                      } else if (monthVal >= 100 && monthVal <= 140) {
+                        alertBadge = (
+                          <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10.5px] font-extrabold whitespace-nowrap">
+                            ⚠️ 100–140h (Media)
+                          </span>
+                        );
+                      } else if (monthVal > 190) {
+                        alertBadge = (
+                          <span className="px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 text-[10.5px] font-extrabold whitespace-nowrap">
+                            🔴 &gt; 190h (Sobrecarga)
+                          </span>
+                        );
+                      }
+
+                      return (
+                        <tr key={r.id} className={getRowBgClass(r.totalHorasInstructor)}>
+                          <td className="p-2.5 font-bold uppercase text-slate-800">
+                            {titleCase(r.instructor)}
+                            {r.documento && (
+                              <span className="block text-[10px] text-slate-500 font-normal">CC: {r.documento}</span>
+                            )}
+                          </td>
+                          <td className="p-2.5">
+                            {renderVincPill(r.vinculacion)}
+                          </td>
+                          <td className="p-2.5 text-right font-medium">
+                            {r.horasTituladaLectiva.toLocaleString('es-CO')}
+                          </td>
+                          <td className="p-2.5 text-right font-medium">
+                            {r.horasComplementaria.toLocaleString('es-CO')}
+                          </td>
+                          <td className="p-2.5 text-right font-extrabold text-slate-900">
+                            {r.totalHorasFormacion.toLocaleString('es-CO')}
+                          </td>
+                          <td className="p-2.5 text-right font-extrabold text-[#1666BA]">
+                            {r.horasAdicionales.toLocaleString('es-CO')}
+                          </td>
+                          <td className="p-2.5 text-right font-black text-slate-900 text-sm">
+                            {r.totalHorasInstructor.toLocaleString('es-CO')}
+                          </td>
+                          <td className="p-2.5 text-center">
+                            {alertBadge}
+                          </td>
+                          <td className="p-2.5 text-center">
+                            <button
+                              onClick={() => handleGeneratePdf(r.documento || r.instructor)}
+                              title={`Descargar hoja PDF individual de ${r.instructor}`}
+                              className="p-1.5 text-[#2C7A00] hover:text-emerald-800 hover:bg-[#EAF7E0] rounded-lg transition-all cursor-pointer inline-flex items-center justify-center border border-emerald-200"
+                            >
+                              <FileText className="w-3.5 h-3.5" />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })
                   )}
                 </tbody>
               </table>
@@ -1164,7 +1291,7 @@ export default function HorasReportadasView({
 
       {/* VISTA 2: INSTRUCTOR INDIVIDUAL */}
       {activeTab === 'instructor' && (
-        <InstructorIndividualView 
+        <InstructorIndividualView
           records={combinedRecords}
           monthsList={monthsList}
         />
@@ -1183,7 +1310,7 @@ export default function HorasReportadasView({
                 <Globe className="w-5 h-5 text-[#2C7A00]" />
                 <h3 className="font-extrabold text-[#1F2A24] text-base">Conexión con Google Drive / Sheets</h3>
               </div>
-              <button 
+              <button
                 onClick={() => setShowDriveModal(false)}
                 className="text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
               >
@@ -1237,6 +1364,168 @@ export default function HorasReportadasView({
                 <span>{isSyncingDrive ? 'Analizando...' : 'Sincronizar Ahora'}</span>
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL GENERADOR DE INFORME PDF DE TIEMPOS Y ALERTAS */}
+      {showPdfModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-xl w-full p-6 shadow-2xl space-y-5 animate-in fade-in zoom-in-95 max-h-[90vh] overflow-y-auto">
+
+            {/* Modal Header */}
+            <div className="flex items-center justify-between border-b border-[#DCE5DC] pb-3.5">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-[#EAF7E0] border border-[#39A900]/30 flex items-center justify-center text-[#2C7A00]">
+                  <FileText className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-[#1F2A24] text-base leading-tight">
+                    Generar Informe PDF de Tiempos y Alertas
+                  </h3>
+                  <p className="text-xs text-slate-500 font-medium mt-0.5">
+                    Centro Minero · Regional Boyacá · Vigencia 2026
+                  </p>
+                </div>
+              </div>
+              {!isGeneratingPdf && (
+                <button
+                  onClick={() => setShowPdfModal(false)}
+                  className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              )}
+            </div>
+
+            {/* Criterios de Alertas Explicación */}
+            <div className="bg-slate-50 border border-[#DCE5DC] rounded-xl p-4 space-y-2.5">
+              <span className="text-xs font-black text-slate-700 uppercase tracking-wider block">
+                Estructura del Informe PDF:
+              </span>
+
+              <div className="space-y-2 text-xs text-slate-600">
+                <div className="flex items-start gap-2 p-2 bg-white rounded-lg border border-slate-200">
+                  <span className="font-black text-[#2C7A00] bg-[#EAF7E0] px-2 py-0.5 rounded text-[11px] whitespace-nowrap">
+                    Hoja 1
+                  </span>
+                  <div>
+                    <strong className="text-slate-800">Informe y Cuadro de Mando de Alertas:</strong>
+                    <p className="text-[11.5px] text-slate-500 mt-0.5">
+                      Resumen ejecutivo de carga horaria mensual y matriz comparativa de todos los instructores según los 3 niveles de alerta:
+                    </p>
+                    <ul className="mt-1.5 space-y-1 text-[11px]">
+                      <li className="flex items-center gap-1.5 text-rose-700 font-semibold">
+                        <span className="w-2 h-2 rounded-full bg-rose-500 inline-block"></span>
+                        <span><strong>Alerta Crítica:</strong> Menor a 100 horas al mes (déficit de programación).</span>
+                      </li>
+                      <li className="flex items-center gap-1.5 text-amber-700 font-semibold">
+                        <span className="w-2 h-2 rounded-full bg-amber-500 inline-block"></span>
+                        <span><strong>Alerta Intermedia:</strong> Entre 100 a 140 horas al mes (carga moderada).</span>
+                      </li>
+                      <li className="flex items-center gap-1.5 text-emerald-700 font-semibold">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block"></span>
+                        <span><strong>Rango Óptimo:</strong> Entre 140 a 190 horas al mes (meta contractual ~160h).</span>
+                      </li>
+                      <li className="flex items-center gap-1.5 text-purple-700 font-semibold">
+                        <span className="w-2 h-2 rounded-full bg-purple-500 inline-block"></span>
+                        <span><strong>Alerta Sobrecarga:</strong> Supera 190 horas al mes (alerta de exceso).</span>
+                      </li>
+                    </ul>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-2 p-2 bg-white rounded-lg border border-slate-200">
+                  <span className="font-black text-[#1666BA] bg-[#E4F0FB] px-2 py-0.5 rounded text-[11px] whitespace-nowrap">
+                    Hojas 2+
+                  </span>
+                  <div>
+                    <strong className="text-slate-800">Una Hoja por Instructor:</strong>
+                    <p className="text-[11.5px] text-slate-500 mt-0.5">
+                      Página dedicada individual por cada instructor analizado, con su tabla mes a mes de tiempos (H. Titulada Lectiva, H. Complementaria, H. Apoyo), desglose de actividades especiales, observaciones y espacios oficiales para firmas.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Resumen de Datos a Procesar */}
+            <div className="grid grid-cols-3 gap-2.5 text-center">
+              <div className="bg-[#EAF7E0]/50 border border-[#39A900]/20 rounded-xl p-2.5">
+                <span className="text-[10.5px] font-bold text-[#2C7A00] block uppercase">Instructores</span>
+                <span className="text-lg font-black text-slate-800">{consolidadoInstructores.length}</span>
+              </div>
+              <div className="bg-[#E4F0FB]/50 border border-[#1666BA]/20 rounded-xl p-2.5">
+                <span className="text-[10.5px] font-bold text-[#1666BA] block uppercase">Meses Evaluados</span>
+                <span className="text-lg font-black text-slate-800">{monthsList.length}</span>
+              </div>
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-2.5">
+                <span className="text-[10.5px] font-bold text-slate-600 block uppercase">Registros Totales</span>
+                <span className="text-lg font-black text-slate-800">{combinedRecords.length}</span>
+              </div>
+            </div>
+
+            {/* Barra de Progreso durante la compilación */}
+            {isGeneratingPdf && pdfProgress && (
+              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3.5 space-y-2">
+                <div className="flex items-center justify-between text-xs font-bold text-emerald-900">
+                  <span className="flex items-center gap-1.5">
+                    <Loader2 className="w-4 h-4 animate-spin text-[#39A900]" />
+                    <span>Compilando documento PDF...</span>
+                  </span>
+                  <span>{pdfProgress.total > 0 ? Math.round((pdfProgress.current / pdfProgress.total) * 100) : 0}%</span>
+                </div>
+
+                <div className="w-full bg-emerald-200 rounded-full h-2 overflow-hidden">
+                  <div
+                    className="bg-[#39A900] h-2 rounded-full transition-all duration-200"
+                    style={{ width: `${pdfProgress.total > 0 ? (pdfProgress.current / pdfProgress.total) * 100 : 5}%` }}
+                  />
+                </div>
+
+                <p className="text-[11px] text-emerald-800 font-medium truncate">
+                  Procesando: {pdfProgress.name} ({pdfProgress.current} de {pdfProgress.total})
+                </p>
+              </div>
+            )}
+
+            {/* Error Message */}
+            {pdfError && (
+              <div className="bg-rose-50 border border-rose-200 p-3 rounded-xl text-xs text-rose-700 font-semibold flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+                <span>{pdfError}</span>
+              </div>
+            )}
+
+            {/* Footer Buttons */}
+            <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-[#DCE5DC]">
+              <button
+                onClick={() => setShowPdfModal(false)}
+                disabled={isGeneratingPdf}
+                className="px-4 py-2.5 text-xs font-extrabold text-slate-600 hover:bg-slate-100 rounded-xl cursor-pointer disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+
+              <button
+                onClick={() => handleGeneratePdf()}
+                disabled={isGeneratingPdf}
+                className="px-5 py-2.5 text-xs font-extrabold bg-[#2C7A00] hover:bg-[#39A900] text-white rounded-xl shadow-xs transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
+              >
+                {isGeneratingPdf ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Generando PDF...</span>
+                  </>
+                ) : (
+                  <>
+                    <FileText className="w-4 h-4" />
+                    <span>Descargar Informe Completo (PDF)</span>
+                  </>
+                )}
+              </button>
+            </div>
+
           </div>
         </div>
       )}

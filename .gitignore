@@ -78,3 +78,7 @@ test_df14.xml
 
 # Vercel local configuration
 .vercel/
+
+# Archivos locales / copias de respaldo
+assets/
+src/data/inasistenciasSampleData.ts.bak

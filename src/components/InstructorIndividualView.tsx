@@ -1,7 +1,8 @@
 import React, { useState, useMemo } from 'react';
-import { Search } from 'lucide-react';
+import { Search, FileText, Loader2, AlertTriangle } from 'lucide-react';
 import { ReporteHorasRecord, cleanInstructorName } from './HorasReportadasView';
 import { InstructorTrendChart, InstructorBreakdownChart } from './HorasCharts';
+import { generateInstructoresTiemposPDF, getAlertForHours } from '../services/instructorTiemposPdfService';
 
 interface InstructorIndividualViewProps {
   records: ReporteHorasRecord[];
@@ -11,9 +12,30 @@ interface InstructorIndividualViewProps {
 export function InstructorIndividualView({ records, monthsList }: InstructorIndividualViewProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedInstructorId, setSelectedInstructorId] = useState<string | null>(null);
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+  const [pdfMsg, setPdfMsg] = useState<string | null>(null);
 
   const titleCase = (s: string) => {
     return (s || '').toLowerCase().replace(/(^|\s)\S/g, t => t.toUpperCase());
+  };
+
+  const handleDownloadInstructorPdf = async (instructorId?: string) => {
+    setIsGeneratingPdf(true);
+    setPdfMsg(null);
+    try {
+      await generateInstructoresTiemposPDF({
+        records,
+        monthsList,
+        selectedInstructorId: instructorId || selectedInstructorId || null,
+      });
+      setPdfMsg('¡PDF generado y descargado correctamente!');
+      setTimeout(() => setPdfMsg(null), 4000);
+    } catch (err: any) {
+      console.error('Error generando PDF individual:', err);
+      setPdfMsg('Error al generar el PDF.');
+    } finally {
+      setIsGeneratingPdf(false);
+    }
   };
 
   const renderVincPill = (v: string) => {
@@ -203,6 +225,82 @@ export function InstructorIndividualView({ records, monthsList }: InstructorIndi
       {selectedInstructorData ? (
         <div className="space-y-6">
           
+          {/* INSTRUCTOR TOP ACTION BAR */}
+          <div className="bg-white border border-[#DCE5DC] rounded-xl p-4 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="text-lg font-black text-slate-800 uppercase tracking-tight">
+                  {titleCase(selectedInstructorData.instructorName)}
+                </h2>
+                {(() => {
+                  const avg = selectedInstructorData.promedioMensual;
+                  if (avg < 100) {
+                    return (
+                      <span className="px-2.5 py-0.5 rounded-full bg-rose-100 text-rose-800 font-extrabold text-xs">
+                        🚨 Alerta Baja Carga (&lt; 100h / mes)
+                      </span>
+                    );
+                  }
+                  if (avg >= 100 && avg <= 140) {
+                    return (
+                      <span className="px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 font-extrabold text-xs">
+                        ⚠️ Alerta Intermedia (100–140h / mes)
+                      </span>
+                    );
+                  }
+                  if (avg > 190) {
+                    return (
+                      <span className="px-2.5 py-0.5 rounded-full bg-purple-100 text-purple-800 font-extrabold text-xs">
+                        🔴 Alerta Sobrecarga (&gt; 190h / mes)
+                      </span>
+                    );
+                  }
+                  return (
+                    <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-extrabold text-xs">
+                      🟢 Carga Horaria Óptima (140–190h)
+                    </span>
+                  );
+                })()}
+              </div>
+              <p className="text-xs text-[#5B6B62] mt-0.5">
+                Centro Minero · Regional Boyacá · Registro de Tiempos Vigencia 2026
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => handleDownloadInstructorPdf(selectedInstructorData.id)}
+                disabled={isGeneratingPdf}
+                className="px-4 py-2 bg-[#EAF7E0] hover:bg-[#d5eed0] text-[#2C7A00] font-extrabold rounded-xl text-xs transition-all flex items-center gap-1.5 border border-[#39A900]/40 cursor-pointer shadow-xs disabled:opacity-50"
+                title="Descargar hoja individual de tiempos y alertas en formato PDF oficial"
+              >
+                {isGeneratingPdf ? (
+                  <Loader2 className="w-4 h-4 animate-spin text-[#2C7A00]" />
+                ) : (
+                  <FileText className="w-4 h-4 text-[#2C7A00]" />
+                )}
+                <span>Descargar Hoja PDF</span>
+              </button>
+
+              <button
+                onClick={() => handleDownloadInstructorPdf()}
+                disabled={isGeneratingPdf}
+                className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition-all flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                title="Descargar informe completo con portada de alertas y todas las hojas"
+              >
+                <FileText className="w-3.5 h-3.5" />
+                <span>Informe Completo</span>
+              </button>
+            </div>
+          </div>
+
+          {pdfMsg && (
+            <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 px-4 py-2.5 rounded-xl text-xs font-semibold flex items-center gap-2">
+              <span>✓</span>
+              <span>{pdfMsg}</span>
+            </div>
+          )}
+
           {/* KPI GRID INSTRUCTOR */}
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3.5">
             <div className="bg-white border border-[#DCE5DC] rounded-xl p-4 shadow-xs">
@@ -257,7 +355,7 @@ export function InstructorIndividualView({ records, monthsList }: InstructorIndi
 
           {/* TABLE: DETALLE MES A MES */}
           <div className="bg-white border border-[#DCE5DC] rounded-xl p-5 shadow-xs space-y-3">
-            <h3 className="text-base font-bold text-[#1F2A24]">Detalle Mes a Mes</h3>
+            <h3 className="text-base font-bold text-[#1F2A24]">Detalle Mes a Mes y Diagnóstico de Alerta</h3>
             
             <div className="border border-[#DCE5DC] rounded-lg overflow-x-auto">
               <table className="w-full text-left border-collapse text-xs">
@@ -267,19 +365,42 @@ export function InstructorIndividualView({ records, monthsList }: InstructorIndi
                     <th className="p-3">Vinculación</th>
                     <th className="p-3 text-right">H. Formación</th>
                     <th className="p-3 text-right">H. Apoyo</th>
-                    <th className="p-3 text-right">Total</th>
+                    <th className="p-3 text-right">Total Horas</th>
+                    <th className="p-3 text-center">Diagnóstico de Alerta</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[#DCE5DC]">
-                  {selectedInstructorData.monthlyRows.map(row => (
-                    <tr key={row.MES} className="hover:bg-emerald-50/30">
-                      <td className="p-2.5 font-bold text-slate-800">{row.MES}</td>
-                      <td className="p-2.5">{renderVincPill(row.TIPO_VINCULACION)}</td>
-                      <td className="p-2.5 text-right font-semibold">{row.TOTAL_H_FORMACION.toLocaleString('es-CO')}</td>
-                      <td className="p-2.5 text-right font-semibold">{row.TOTAL_H_ADICIONALES.toLocaleString('es-CO')}</td>
-                      <td className="p-2.5 text-right font-black text-slate-900 text-sm">{row.TOTAL_H_INSTRUCTOR.toLocaleString('es-CO')}</td>
-                    </tr>
-                  ))}
+                  {selectedInstructorData.monthlyRows.map(row => {
+                    const alertInfo = getAlertForHours(row.TOTAL_H_INSTRUCTOR);
+                    let badgeClass = "bg-emerald-100 text-emerald-800";
+                    let icon = "🟢";
+
+                    if (alertInfo.type === 'BAJA') {
+                      badgeClass = "bg-rose-100 text-rose-800";
+                      icon = "🚨";
+                    } else if (alertInfo.type === 'INTERMEDIA') {
+                      badgeClass = "bg-amber-100 text-amber-800";
+                      icon = "⚠️";
+                    } else if (alertInfo.type === 'SOBRECARGA') {
+                      badgeClass = "bg-purple-100 text-purple-800";
+                      icon = "🔴";
+                    }
+
+                    return (
+                      <tr key={row.MES} className="hover:bg-emerald-50/30">
+                        <td className="p-2.5 font-bold text-slate-800">{row.MES}</td>
+                        <td className="p-2.5">{renderVincPill(row.TIPO_VINCULACION)}</td>
+                        <td className="p-2.5 text-right font-semibold">{row.TOTAL_H_FORMACION.toLocaleString('es-CO')}</td>
+                        <td className="p-2.5 text-right font-semibold">{row.TOTAL_H_ADICIONALES.toLocaleString('es-CO')}</td>
+                        <td className="p-2.5 text-right font-black text-slate-900 text-sm">{row.TOTAL_H_INSTRUCTOR.toLocaleString('es-CO')}</td>
+                        <td className="p-2.5 text-center">
+                          <span className={`px-2 py-0.5 rounded-full font-extrabold text-[10.5px] whitespace-nowrap ${badgeClass}`}>
+                            {icon} {alertInfo.label}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

@@ -4,22 +4,22 @@
  */
 
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { 
-  FileCode, 
-  Upload, 
-  RotateCcw, 
-  Filter, 
-  Download, 
-  Search, 
-  Users, 
-  GraduationCap, 
-  Award, 
-  Clock, 
-  LogOut, 
-  PlayCircle, 
-  FileText, 
+import {
+  FileCode,
+  Upload,
+  RotateCcw,
+  Filter,
+  Download,
+  Search,
+  Users,
+  GraduationCap,
+  Award,
+  Clock,
+  LogOut,
+  PlayCircle,
+  FileText,
   ChevronLeft,
-  ChevronRight, 
+  ChevronRight,
   ArrowRight,
   ArrowRightLeft,
   X,
@@ -40,18 +40,18 @@ import {
   Check,
   Trash2
 } from 'lucide-react';
-import { 
-  BarChart, 
-  Bar, 
-  XAxis, 
-  YAxis, 
-  Tooltip, 
-  ResponsiveContainer, 
-  Cell, 
-  PieChart, 
-  Pie, 
-  AreaChart, 
-  Area 
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+  Cell,
+  PieChart,
+  Pie,
+  AreaChart,
+  Area
 } from 'recharts';
 
 export interface FichaDF14 {
@@ -464,12 +464,21 @@ export default function AnalisisDF14View() {
   // Google Drive Sync State
   const DEFAULT_DRIVE_FOLDER_URL = 'https://drive.google.com/drive/folders/1khmfgzE-GFmlWZvtGlaBXfoyh8LJgiTK?usp=sharing';
   const DEFAULT_FOLDER_ID = '1khmfgzE-GFmlWZvtGlaBXfoyh8LJgiTK';
-  const DEFAULT_FILE_ID = '1Ll1g7SmYMytc5qhmI1llL1l0tBfMqe5X';
+  const DEFAULT_FILE_ID = '1djrV7Zb9ltfdqBt4svOdtwNpn4AYUg7E';
   const [showDriveModal, setShowDriveModal] = useState<boolean>(false);
   const [driveUrl, setDriveUrl] = useState<string>(() => {
     return sessionStorage.getItem('sena_df14_drive_url') || DEFAULT_DRIVE_FOLDER_URL;
   });
   const [isSyncingDrive, setIsSyncingDrive] = useState<boolean>(false);
+  const [detectedDriveFileName, setDetectedDriveFileName] = useState<string>(() => {
+    return sessionStorage.getItem('sena_df14_detected_file_name') || 'DF-14A_1.xml';
+  });
+  const [detectedDriveFileId, setDetectedDriveFileId] = useState<string>(() => {
+    return sessionStorage.getItem('sena_df14_detected_file_id') || '';
+  });
+  const [autoSyncEnabled, setAutoSyncEnabled] = useState<boolean>(() => {
+    return sessionStorage.getItem('sena_df14_auto_sync') !== 'false';
+  });
   const [driveSyncError, setDriveSyncError] = useState<string | null>(null);
   const [driveSyncSuccess, setDriveSyncSuccess] = useState<string | null>(null);
   const [pastedXml, setPastedXml] = useState<string>('');
@@ -491,7 +500,11 @@ export default function AnalisisDF14View() {
   const [searchQuery, setSearchQuery] = useState<string>('');
 
   // XML Parser Function
-  const parseXMLText = (xmlString: string, fileName: string) => {
+  const parseXMLText = (
+    xmlString: string,
+    fileName: string,
+    options: { silent?: boolean; isDriveSync?: boolean } = {}
+  ) => {
     try {
       const parser = new DOMParser();
       const xmlDoc = parser.parseFromString(xmlString, 'text/xml');
@@ -505,7 +518,7 @@ export default function AnalisisDF14View() {
 
       // 1. Gather all Row / Ficha elements in the XML document
       let rowNodes = Array.from(xmlDoc.querySelectorAll('Table > Row, Table Row, row, ROW, tr, TR, Row, Ficha, FICHA, ficha, Registro, REGISTRO'));
-      
+
       if (rowNodes.length === 0) {
         rowNodes = Array.from(xmlDoc.querySelectorAll('*')).filter(el => {
           const tag = el.tagName.toUpperCase();
@@ -731,27 +744,37 @@ export default function AnalisisDF14View() {
       });
 
       if (extractedFichas.length === 0) {
-        alert('No se encontraron estructuras de Fichas/Aprendices válidas en el archivo XML. Se mantendrá el dataset del Centro Minero.');
+        if (!options.silent) {
+          alert('No se encontraron estructuras de Fichas/Aprendices válidas en el archivo XML. Se mantendrá el dataset del Centro Minero.');
+        } else {
+          setDriveSyncError('No se encontraron estructuras de Fichas/Aprendices válidas en el archivo XML analizado.');
+        }
         return;
       }
 
       const now = new Date();
       const formattedDate = `${now.toLocaleDateString('es-CO')} ${now.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}`;
-      
+
       setFichasData(extractedFichas);
       setLastUpdated(formattedDate);
       setLoadedFileName(fileName);
-      setSelectedFichaId(extractedFichas[0].ficha);
+      if (extractedFichas.length > 0) {
+        setSelectedFichaId(extractedFichas[0].ficha);
+      }
       setCurrentPage(1);
 
       sessionStorage.setItem('sena_df14_xml_parsed_data', JSON.stringify(extractedFichas));
       sessionStorage.setItem('sena_df14_last_updated', formattedDate);
       sessionStorage.setItem('sena_df14_file_name', fileName);
 
-      alert(`¡Archivo XML '${fileName}' analizado con éxito!\nSe procesaron y cargaron las ${extractedFichas.length.toLocaleString('es-CO')} fichas del reporte XML.`);
+      if (!options.silent) {
+        setDriveSyncSuccess(`¡Archivo XML '${fileName}' analizado con éxito! Se procesaron y cargaron las ${extractedFichas.length.toLocaleString('es-CO')} fichas.`);
+      }
     } catch (err: any) {
       console.error('XML Parsing Error:', err);
-      alert('Error al analizar el archivo XML: ' + (err.message || 'formato inválido.'));
+      if (!options.silent) {
+        setDriveSyncError('Error al analizar el archivo XML: ' + (err.message || 'formato inválido.'));
+      }
     }
   };
 
@@ -769,56 +792,65 @@ export default function AnalisisDF14View() {
     }
   };
 
-  // Google Drive Sync Handler
-  const handleSyncFromDrive = async () => {
+  // Google Drive Sync Handler (escanea dinámicamente la carpeta compartida y detecta el XML actual)
+  const handleSyncFromDrive = async (options: { isAuto?: boolean; force?: boolean } = {}) => {
+    const isAuto = options.isAuto ?? false;
     setIsSyncingDrive(true);
     setDriveSyncError(null);
-    setDriveSyncSuccess(null);
+    if (!isAuto) setDriveSyncSuccess(null);
 
     try {
       sessionStorage.setItem('sena_df14_drive_url', driveUrl);
 
-      // Extract File or Folder ID from URL
-      let targetFileId = DEFAULT_FILE_ID;
-      const matchFile = driveUrl.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
-      const matchFolder = driveUrl.match(/\/folders\/([a-zA-Z0-9_-]+)/);
-      const matchIdParam = driveUrl.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+      // Extraer File o Folder ID desde la URL
+      let targetFolderId = DEFAULT_FOLDER_ID;
+      let targetFileId = '';
+      const matchFile = driveUrl.match(/\/file\/d\/([a-zA-Z0-9_-]{25,})/);
+      const matchFolder = driveUrl.match(/\/folders\/([a-zA-Z0-9_-]{25,})/);
+      const matchIdParam = driveUrl.match(/[?&]id=([a-zA-Z0-9_-]{25,})/);
 
       if (matchFile) {
         targetFileId = matchFile[1];
       } else if (matchFolder) {
-        const folderId = matchFolder[1];
-        if (folderId === DEFAULT_FOLDER_ID || folderId === '1khmfgzE-GFmlWZvtGlaBXfoyh8LJgiTK') {
-          targetFileId = DEFAULT_FILE_ID;
-        } else {
-          targetFileId = folderId;
-        }
+        targetFolderId = matchFolder[1];
       } else if (matchIdParam) {
-        targetFileId = matchIdParam[1];
+        targetFolderId = matchIdParam[1];
       }
 
       let xmlLoaded = false;
       let loadedXmlText = '';
+      let discoveredName = detectedDriveFileName || 'DF-14A_1.xml';
+      let discoveredId = detectedDriveFileId || DEFAULT_FILE_ID;
 
-      // Method 1: Local API proxy route
+      // Método 1: Proxy de API local con escaneo dinámico de la carpeta en Google Drive
       try {
-        const proxyRes = await fetch(`/api/drive-proxy?fileId=${targetFileId}`);
+        const query = targetFileId
+          ? `fileId=${encodeURIComponent(targetFileId)}`
+          : `folderId=${encodeURIComponent(targetFolderId)}`;
+        const proxyRes = await fetch(`/api/drive-proxy?${query}&_t=${Date.now()}`, {
+          cache: 'no-store'
+        });
         if (proxyRes.ok) {
           const text = await proxyRes.text();
           if (text && (text.includes('Workbook') || text.includes('Table') || text.includes('Row') || text.includes('<?xml'))) {
             loadedXmlText = text;
             xmlLoaded = true;
+            const headerName = proxyRes.headers.get('X-Drive-File-Name');
+            if (headerName) discoveredName = decodeURIComponent(headerName);
+            const headerId = proxyRes.headers.get('X-Drive-File-Id');
+            if (headerId) discoveredId = headerId;
           }
         }
       } catch (e) {
-        console.log('Local drive-proxy attempted, trying direct download URL.', e);
+        console.warn('Fallo intento local drive-proxy:', e);
       }
 
-      // Method 2: Direct Google Drive usercontent download URL
+      // Método 2: Descarga directa por candidate ID si está disponible
       if (!xmlLoaded) {
-        const directDownloadUrl = `https://drive.usercontent.google.com/download?id=${targetFileId}&export=download&confirm=t`;
+        const candidateId = discoveredId || DEFAULT_FILE_ID;
+        const directDownloadUrl = `https://drive.usercontent.google.com/download?id=${candidateId}&export=download&confirm=t&_t=${Date.now()}`;
         try {
-          const res = await fetch(directDownloadUrl);
+          const res = await fetch(directDownloadUrl, { cache: 'no-store' });
           if (res.ok) {
             const text = await res.text();
             if (text && (text.includes('Workbook') || text.includes('Table') || text.includes('Row') || text.includes('<?xml'))) {
@@ -827,13 +859,14 @@ export default function AnalisisDF14View() {
             }
           }
         } catch (e) {
-          console.log('Direct fetch error, attempting public CORS proxy.', e);
+          console.warn('Fallo intento directo usercontent:', e);
         }
       }
 
-      // Method 3: Public CORS proxy fallback
+      // Método 3: Fallback CORS público si aplica
       if (!xmlLoaded) {
-        const directDownloadUrl = `https://drive.usercontent.google.com/download?id=${targetFileId}&export=download&confirm=t`;
+        const candidateId = discoveredId || DEFAULT_FILE_ID;
+        const directDownloadUrl = `https://drive.usercontent.google.com/download?id=${candidateId}&export=download&confirm=t`;
         const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(directDownloadUrl)}`;
         try {
           const res = await fetch(proxyUrl);
@@ -845,27 +878,42 @@ export default function AnalisisDF14View() {
             }
           }
         } catch (e) {
-          console.log('Public CORS proxy error.', e);
+          console.warn('Fallo proxy CORS:', e);
         }
       }
 
       if (xmlLoaded && loadedXmlText) {
-        parseXMLText(loadedXmlText, `DF-14A_1.xml`);
+        setDetectedDriveFileName(discoveredName);
+        setDetectedDriveFileId(discoveredId);
+        sessionStorage.setItem('sena_df14_detected_file_name', discoveredName);
+        sessionStorage.setItem('sena_df14_detected_file_id', discoveredId);
+
+        parseXMLText(loadedXmlText, discoveredName, { silent: true, isDriveSync: true });
         const now = new Date();
         const formattedDate = `${now.toLocaleDateString('es-CO')} ${now.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}`;
         setLastDriveSync(formattedDate);
         sessionStorage.setItem('sena_df14_last_drive_sync', formattedDate);
-        setDriveSyncSuccess(`¡Sincronización con Google Drive exitosa! Se verificó la información de la carpeta compartida y se analizó el reporte XML (DF-14A_1.xml).`);
+        setDriveSyncSuccess(`¡Sincronización exitosa! Se cargó y analizó el archivo "${discoveredName}" subido en la carpeta de Google Drive.`);
       } else {
-        throw new Error('No se pudo obtener el archivo XML desde la carpeta de Google Drive.');
+        throw new Error('No se pudo obtener el archivo XML desde la carpeta compartida de Google Drive.');
       }
     } catch (err: any) {
       console.error('Drive sync failed:', err);
-      setDriveSyncError('No se pudo sincronizar automáticamente el archivo de Drive. Verifica la conexión o usa la opción "Cargar Local" para seleccionar el archivo XML descargado.');
+      if (!isAuto) {
+        setDriveSyncError('No se pudo sincronizar automáticamente el archivo de Google Drive. Verifica la conexión o usa la opción "Cargar Local" para seleccionar el archivo XML descargado.');
+      }
     } finally {
       setIsSyncingDrive(false);
     }
   };
+
+  // Sincronización automática de Google Drive al montar la vista
+  useEffect(() => {
+    const shouldAutoSync = sessionStorage.getItem('sena_df14_auto_sync') !== 'false';
+    if (shouldAutoSync) {
+      handleSyncFromDrive({ isAuto: true });
+    }
+  }, []);
 
   const handleProcessPastedXml = () => {
     if (!pastedXml.trim()) {
@@ -948,8 +996,8 @@ export default function AnalisisDF14View() {
       if (filterCentro !== 'Todos' && f.centro !== filterCentro) return false;
       if (searchQuery) {
         const q = searchQuery.toLowerCase();
-        return f.ficha.toLowerCase().includes(q) || 
-               f.programa.toLowerCase().includes(q) || 
+        return f.ficha.toLowerCase().includes(q) ||
+               f.programa.toLowerCase().includes(q) ||
                f.instructor.toLowerCase().includes(q);
       }
       return true;
@@ -981,7 +1029,7 @@ export default function AnalisisDF14View() {
     return filteredFichas.filter(f => {
       const hasTransito = (f.enTransito || 0) > 0;
       const hasInduccion = (f.induccion || 0) > 0;
-      
+
       if (!hasTransito && !hasInduccion) return false;
 
       if (filterNovState === 'En Tránsito') return hasTransito;
@@ -1143,9 +1191,9 @@ export default function AnalisisDF14View() {
 
   return (
     <div className="space-y-6 pb-12 font-sans antialiased text-slate-800">
-      
+
       {/* Hidden XML File Input */}
-      <input 
+      <input
         type="file"
         ref={fileInputRef}
         accept=".xml"
@@ -1213,20 +1261,20 @@ export default function AnalisisDF14View() {
 
           <div className="flex items-center gap-1">
             <button
-              onClick={handleSyncFromDrive}
+              onClick={() => handleSyncFromDrive({ isAuto: false })}
               disabled={isSyncingDrive}
               className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow-md cursor-pointer border border-blue-500"
-              title="Sincronizar inmediatamente con Google Drive"
+              title="Detectar y cargar el archivo XML actual de la carpeta de Google Drive"
             >
-              <CloudDownload className={`w-4 h-4 ${isSyncingDrive ? 'animate-bounce' : ''}`} />
-              {isSyncingDrive ? 'Sincronizando...' : 'Sincronizar Drive'}
+              <RefreshCw className={`w-4 h-4 ${isSyncingDrive ? 'animate-spin' : ''}`} />
+              {isSyncingDrive ? 'Cargando de Drive...' : 'Actualizar desde Drive'}
             </button>
             <button
               onClick={() => setShowDriveModal(true)}
               className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl transition-all cursor-pointer border border-slate-200"
-              title="Opciones / Configurar ruta de Google Drive"
+              title="Opciones y detalles de la carpeta de Google Drive"
             >
-              <ExternalLink className="w-3.5 h-3.5" />
+              <Folder className="w-3.5 h-3.5 text-blue-600" />
             </button>
           </div>
 
@@ -1240,11 +1288,94 @@ export default function AnalisisDF14View() {
         </div>
       </div>
 
+      {/* DRIVE STATUS & AUTO-DETECTION BANNER */}
+      <div className="bg-gradient-to-r from-blue-50 via-sky-50 to-indigo-50 border border-blue-200/90 rounded-2xl p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 shadow-xs">
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 bg-blue-600 text-white rounded-xl shadow-xs shrink-0">
+            <CloudDownload className={`w-5 h-5 ${isSyncingDrive ? 'animate-bounce' : ''}`} />
+          </div>
+          <div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs font-black text-blue-950 uppercase tracking-wide">
+                Carpeta Google Drive Vinculada
+              </span>
+              <span className="inline-flex items-center gap-1 bg-blue-100 text-blue-800 text-[10px] font-extrabold px-2 py-0.5 rounded-full border border-blue-300/60">
+                <Sparkles className="w-3 h-3 text-blue-600" />
+                Carga Automática de XML Activa
+              </span>
+              {lastDriveSync && (
+                <span className="text-[11px] font-semibold text-slate-500">
+                  • Última sincronización: <strong className="text-slate-700">{lastDriveSync}</strong>
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-slate-600 mt-0.5">
+              Archivo detectado en la carpeta: <strong className="font-mono text-blue-900 bg-white/80 px-1.5 py-0.5 rounded border border-blue-100">{loadedFileName || detectedDriveFileName || 'DF-14A_1.xml'}</strong>
+              <span className="text-slate-400 mx-1.5">•</span>
+              <span>Cada vez que reemplaces el archivo XML en Drive, la aplicación lo detectará y analizará automáticamente.</span>
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 w-full md:w-auto justify-end">
+          <button
+            onClick={() => handleSyncFromDrive({ isAuto: false })}
+            disabled={isSyncingDrive}
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white text-xs font-bold rounded-xl shadow-xs transition-all cursor-pointer"
+            title="Volver a escanear la carpeta y recargar el archivo XML"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isSyncingDrive ? 'animate-spin' : ''}`} />
+            {isSyncingDrive ? 'Cargando de Drive...' : 'Actualizar desde Drive'}
+          </button>
+          <a
+            href={DEFAULT_DRIVE_FOLDER_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1 px-3 py-2 bg-white hover:bg-slate-100 text-slate-700 text-xs font-bold rounded-xl border border-slate-300 shadow-xs transition-all"
+            title="Abrir carpeta compartida en Google Drive"
+          >
+            <span>Ver en Drive</span>
+            <ExternalLink className="w-3.5 h-3.5 text-slate-400" />
+          </a>
+        </div>
+      </div>
+
+      {/* SYNC NOTICES */}
+      {driveSyncSuccess && (
+        <div className="bg-emerald-50 border border-emerald-200 text-emerald-900 p-3 rounded-2xl text-xs font-semibold flex items-center justify-between gap-2 animate-in fade-in duration-150">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>{driveSyncSuccess}</span>
+          </div>
+          <button
+            onClick={() => setDriveSyncSuccess(null)}
+            className="text-emerald-700 hover:text-emerald-900 p-1 rounded-lg cursor-pointer"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
+      {driveSyncError && (
+        <div className="bg-amber-50 border border-amber-200 text-amber-900 p-3 rounded-2xl text-xs font-semibold flex items-center justify-between gap-2 animate-in fade-in duration-150">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+            <span>{driveSyncError}</span>
+          </div>
+          <button
+            onClick={() => setDriveSyncError(null)}
+            className="text-amber-700 hover:text-amber-900 p-1 rounded-lg cursor-pointer"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
       {/* FILTER BAR */}
       <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-sm grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3">
         <div>
           <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">Vigencia</label>
-          <select 
+          <select
             value={filterVigencia}
             onChange={(e) => setFilterVigencia(e.target.value)}
             className="w-full bg-slate-50 border border-slate-200 focus:border-sena rounded-xl px-2.5 py-1.5 text-xs font-semibold outline-none transition-all"
@@ -1255,7 +1386,7 @@ export default function AnalisisDF14View() {
 
         <div>
           <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">Nivel de Formación</label>
-          <select 
+          <select
             value={filterNivel}
             onChange={(e) => setFilterNivel(e.target.value)}
             className="w-full bg-slate-50 border border-slate-200 focus:border-sena rounded-xl px-2.5 py-1.5 text-xs font-semibold outline-none transition-all"
@@ -1266,7 +1397,7 @@ export default function AnalisisDF14View() {
 
         <div>
           <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">Programa de Formación</label>
-          <select 
+          <select
             value={filterPrograma}
             onChange={(e) => setFilterPrograma(e.target.value)}
             className="w-full bg-slate-50 border border-slate-200 focus:border-sena rounded-xl px-2.5 py-1.5 text-xs font-semibold outline-none transition-all truncate"
@@ -1277,7 +1408,7 @@ export default function AnalisisDF14View() {
 
         <div>
           <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">Estado de Ficha</label>
-          <select 
+          <select
             value={filterEstado}
             onChange={(e) => setFilterEstado(e.target.value)}
             className="w-full bg-slate-50 border border-slate-200 focus:border-sena rounded-xl px-2.5 py-1.5 text-xs font-semibold outline-none transition-all"
@@ -1288,7 +1419,7 @@ export default function AnalisisDF14View() {
 
         <div>
           <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">Municipio</label>
-          <select 
+          <select
             value={filterMunicipio}
             onChange={(e) => setFilterMunicipio(e.target.value)}
             className="w-full bg-slate-50 border border-slate-200 focus:border-sena rounded-xl px-2.5 py-1.5 text-xs font-semibold outline-none transition-all"
@@ -1299,7 +1430,7 @@ export default function AnalisisDF14View() {
 
         <div>
           <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">Centro</label>
-          <select 
+          <select
             value={filterCentro}
             onChange={(e) => setFilterCentro(e.target.value)}
             className="w-full bg-slate-50 border border-slate-200 focus:border-sena rounded-xl px-2.5 py-1.5 text-xs font-semibold outline-none transition-all"
@@ -1311,7 +1442,7 @@ export default function AnalisisDF14View() {
         <div className="col-span-2 sm:col-span-3 lg:col-span-1">
           <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">Búsqueda Rápida</label>
           <div className="relative">
-            <input 
+            <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
@@ -1367,7 +1498,7 @@ export default function AnalisisDF14View() {
                 )}
               </span>
             </div>
-            <button 
+            <button
               onClick={handleResetDataset}
               className="text-[10px] font-bold text-sena hover:text-emerald-900 underline cursor-pointer ml-3 shrink-0"
             >
@@ -1538,7 +1669,7 @@ export default function AnalisisDF14View() {
 
       {/* MIDDLE CHARTS ROW (4 Chart Cards) */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        
+
         {/* Chart 1: Fichas por Vigencia */}
         <div className="bg-white rounded-3xl p-4 border border-slate-200/80 shadow-sm flex flex-col justify-between">
           <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider mb-3">
@@ -1549,7 +1680,7 @@ export default function AnalisisDF14View() {
               <BarChart data={chartVigenciaData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                 <XAxis dataKey="vigencia" tick={{ fontSize: 10, fontWeight: 700, fill: '#64748b' }} axisLine={false} tickLine={false} />
                 <YAxis tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
-                <Tooltip 
+                <Tooltip
                   contentStyle={{ backgroundColor: '#0f172a', borderRadius: '12px', border: 'none', color: '#fff', fontSize: '11px' }}
                 />
                 <Bar dataKey="count" fill="#3b82f6" radius={[6, 6, 0, 0]} barSize={24} label={{ position: 'top', fill: '#334155', fontSize: 10, fontWeight: 800 }} />
@@ -1568,7 +1699,7 @@ export default function AnalisisDF14View() {
               <BarChart data={chartNivelData} layout="vertical" margin={{ top: 5, right: 25, left: 10, bottom: 5 }}>
                 <XAxis type="number" hide />
                 <YAxis dataKey="nivel" type="category" tick={{ fontSize: 9, fontWeight: 700, fill: '#475569' }} width={85} axisLine={false} tickLine={false} />
-                <Tooltip 
+                <Tooltip
                   contentStyle={{ backgroundColor: '#0f172a', borderRadius: '12px', border: 'none', color: '#fff', fontSize: '11px' }}
                 />
                 <Bar dataKey="count" fill="#3b82f6" radius={[0, 6, 6, 0]} barSize={12} label={{ position: 'right', fill: '#334155', fontSize: 10, fontWeight: 800 }} />
@@ -1599,7 +1730,7 @@ export default function AnalisisDF14View() {
                       <Cell key={`cell-${index}`} fill={entry.color} />
                     ))}
                   </Pie>
-                  <Tooltip 
+                  <Tooltip
                     contentStyle={{ backgroundColor: '#0f172a', borderRadius: '12px', border: 'none', color: '#fff', fontSize: '11px' }}
                   />
                 </PieChart>
@@ -1650,7 +1781,7 @@ export default function AnalisisDF14View() {
                 </defs>
                 <XAxis dataKey="mes" tick={{ fontSize: 9, fontWeight: 700, fill: '#64748b' }} axisLine={false} tickLine={false} />
                 <YAxis tick={{ fontSize: 9, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
-                <Tooltip 
+                <Tooltip
                   contentStyle={{ backgroundColor: '#0f172a', borderRadius: '12px', border: 'none', color: '#fff', fontSize: '11px' }}
                   formatter={(value: any) => [`${value} fichas`, 'Fichas Iniciadas']}
                   labelFormatter={(label: any, payload: any) => {
@@ -1668,10 +1799,10 @@ export default function AnalisisDF14View() {
 
       {/* MAIN BOTTOM WORKSPACE: Left Charts & Table + Right Ficha Drawer */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
-        
+
         {/* LEFT COLUMN: Aprendices por Estado + Detalle de Fichas Table (8 cols) */}
         <div className="lg:col-span-8 space-y-5">
-          
+
           {/* Aprendices por Estado Horizontal Chart */}
           <div className="bg-white rounded-3xl p-5 border border-slate-200/80 shadow-sm">
             <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider mb-4">
@@ -1682,7 +1813,7 @@ export default function AnalisisDF14View() {
                 <BarChart data={chartAprendicesEstado} layout="vertical" margin={{ top: 5, right: 40, left: 20, bottom: 5 }}>
                   <XAxis type="number" hide />
                   <YAxis dataKey="estado" type="category" tick={{ fontSize: 9, fontWeight: 800, fill: '#475569' }} width={125} axisLine={false} tickLine={false} />
-                  <Tooltip 
+                  <Tooltip
                     contentStyle={{ backgroundColor: '#0f172a', borderRadius: '12px', border: 'none', color: '#fff', fontSize: '11px' }}
                   />
                   <Bar dataKey="val" radius={[0, 6, 6, 0]} barSize={12} label={{ position: 'right', fill: '#1e293b', fontSize: 10, fontWeight: 800 }}>
@@ -1729,7 +1860,7 @@ export default function AnalisisDF14View() {
               <div className="col-span-1 sm:col-span-2 md:col-span-1 lg:col-span-2">
                 <label className="block text-[9px] font-black text-slate-300 uppercase tracking-wider mb-0.5">Buscar Ficha / Programa / Instructor</label>
                 <div className="relative">
-                  <input 
+                  <input
                     type="text"
                     value={searchQuery}
                     onChange={(e) => {
@@ -1746,7 +1877,7 @@ export default function AnalisisDF14View() {
               {/* Vigencia */}
               <div>
                 <label className="block text-[9px] font-black text-slate-300 uppercase tracking-wider mb-0.5">Vigencia</label>
-                <select 
+                <select
                   value={filterVigencia}
                   onChange={(e) => {
                     setFilterVigencia(e.target.value);
@@ -1761,7 +1892,7 @@ export default function AnalisisDF14View() {
               {/* Estado Ficha */}
               <div>
                 <label className="block text-[9px] font-black text-slate-300 uppercase tracking-wider mb-0.5">Estado Ficha</label>
-                <select 
+                <select
                   value={filterEstado}
                   onChange={(e) => {
                     setFilterEstado(e.target.value);
@@ -1776,7 +1907,7 @@ export default function AnalisisDF14View() {
               {/* Nivel */}
               <div>
                 <label className="block text-[9px] font-black text-slate-300 uppercase tracking-wider mb-0.5">Nivel Formación</label>
-                <select 
+                <select
                   value={filterNivel}
                   onChange={(e) => {
                     setFilterNivel(e.target.value);
@@ -1791,7 +1922,7 @@ export default function AnalisisDF14View() {
               {/* Programa */}
               <div>
                 <label className="block text-[9px] font-black text-slate-300 uppercase tracking-wider mb-0.5">Programa</label>
-                <select 
+                <select
                   value={filterPrograma}
                   onChange={(e) => {
                     setFilterPrograma(e.target.value);
@@ -1825,7 +1956,7 @@ export default function AnalisisDF14View() {
                   {paginatedFichas.map((f, idx) => {
                     const isSelected = f.ficha === selectedFichaId;
                     return (
-                      <tr 
+                      <tr
                         key={f.ficha + '_' + idx}
                         onClick={() => setSelectedFichaId(f.ficha)}
                         className={`hover:bg-blue-50/70 transition-all cursor-pointer ${isSelected ? 'bg-blue-50 font-bold border-l-4 border-sena' : ''}`}
@@ -1873,7 +2004,7 @@ export default function AnalisisDF14View() {
             <div className="p-3 bg-slate-50 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs font-semibold text-slate-600">
               <div className="flex items-center gap-2">
                 <span>Mostrar:</span>
-                <select 
+                <select
                   value={pageSize}
                   onChange={(e) => {
                     setPageSize(Number(e.target.value));
@@ -2009,7 +2140,7 @@ export default function AnalisisDF14View() {
                       const isSelected = f.ficha === selectedFichaId;
                       const subtotal = (f.enTransito || 0) + (f.induccion || 0);
                       return (
-                        <tr 
+                        <tr
                           key={`transito_${f.ficha}_${idx}`}
                           onClick={() => setSelectedFichaId(f.ficha)}
                           className={`hover:bg-indigo-50/70 transition-all cursor-pointer ${isSelected ? 'bg-indigo-50/90 font-bold border-l-4 border-indigo-600' : ''}`}
@@ -2096,7 +2227,7 @@ export default function AnalisisDF14View() {
 
         {/* RIGHT COLUMN: Detalle de Ficha Inspector Drawer (4 cols) */}
         <div className="lg:col-span-4 bg-white rounded-3xl p-5 border border-slate-200/80 shadow-sm space-y-4 sticky top-20">
-          
+
           <div className="flex items-center justify-between pb-3 border-b border-slate-100">
             <h4 className="text-xs font-black text-slate-900 uppercase tracking-wider">Detalle de Ficha</h4>
             <span className="text-[10px] font-bold text-slate-400">ID: {activeFicha.ficha}</span>
@@ -2243,7 +2374,7 @@ export default function AnalisisDF14View() {
         </h3>
 
         <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3 items-stretch relative">
-          
+
           {/* Card 1 */}
           <div className="bg-slate-900 text-white rounded-2xl p-3 flex flex-col justify-between space-y-2 shadow-sm text-xs border border-slate-800">
             <div className="flex items-center gap-1.5 font-black uppercase text-[10px] tracking-wider text-slate-300 border-b border-slate-700 pb-1.5">
@@ -2429,7 +2560,7 @@ export default function AnalisisDF14View() {
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
                     <Folder className="w-4 h-4 text-blue-600" />
-                    Archivo Compartido Google Drive
+                    Carpeta Compartida de Google Drive
                   </span>
                   <a
                     href={driveUrl}
@@ -2444,30 +2575,40 @@ export default function AnalisisDF14View() {
 
                 <div>
                   <label className="block text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1">
-                    Enlace de Google Drive Vinculado
+                    Enlace o ID de la Carpeta de Google Drive
                   </label>
                   <div className="flex gap-2">
                     <input
                       type="text"
                       value={driveUrl}
                       onChange={(e) => setDriveUrl(e.target.value)}
-                      placeholder="https://drive.google.com/file/d/..."
+                      placeholder="https://drive.google.com/drive/folders/..."
                       className="flex-1 bg-white border border-slate-300 focus:border-blue-600 rounded-xl px-3 py-2 text-xs font-mono font-medium outline-none transition-all"
                     />
                     <button
                       onClick={() => setDriveUrl(DEFAULT_DRIVE_FOLDER_URL)}
                       className="px-3 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-bold rounded-xl transition-all cursor-pointer"
-                      title="Restablecer enlace predeterminado"
+                      title="Restablecer enlace predeterminado de la carpeta"
                     >
-                      Predeterminado
+                      Carpeta Oficial
                     </button>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2 text-[11px] font-semibold text-slate-600 bg-blue-50/60 p-2.5 rounded-xl border border-blue-100">
-                  <Info className="w-4 h-4 text-blue-600 shrink-0" />
-                  <span>ID de Archivo Drive actual: <strong className="font-mono text-blue-950">{driveUrl.match(/\/file\/d\/([a-zA-Z0-9_-]+)/)?.[1] || DEFAULT_FILE_ID}</strong></span>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] font-semibold text-slate-600">
+                  <div className="bg-blue-50/60 p-2.5 rounded-xl border border-blue-100 flex items-center gap-2">
+                    <Info className="w-4 h-4 text-blue-600 shrink-0" />
+                    <span>ID Carpeta: <strong className="font-mono text-blue-950">{driveUrl.match(/\/folders\/([a-zA-Z0-9_-]+)/)?.[1] || DEFAULT_FOLDER_ID}</strong></span>
+                  </div>
+                  <div className="bg-emerald-50/60 p-2.5 rounded-xl border border-emerald-100 flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span>Archivo detectado: <strong className="font-mono text-emerald-950 truncate">{detectedDriveFileName || loadedFileName || 'DF-14A_1.xml'}</strong></span>
+                  </div>
                 </div>
+
+                <p className="text-[11px] text-slate-500">
+                  💡 <strong>Detección Automática:</strong> Al subir un nuevo archivo XML a la carpeta de Drive reemplazando el anterior, pulsa <strong>"Actualizar desde Drive"</strong> (o al recargar la página) y el sistema lo detectará y analizará inmediatamente.
+                </p>
               </div>
 
               {/* Status alerts */}
@@ -2495,19 +2636,19 @@ export default function AnalisisDF14View() {
               {/* Primary Action Section */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <button
-                  onClick={handleSyncFromDrive}
+                  onClick={() => handleSyncFromDrive({ isAuto: false })}
                   disabled={isSyncingDrive}
                   className="flex items-center justify-center gap-2 p-3.5 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white rounded-2xl text-xs font-black uppercase tracking-wider transition-all shadow-md cursor-pointer border border-blue-500"
                 >
                   {isSyncingDrive ? (
                     <>
                       <RefreshCw className="w-4 h-4 animate-spin" />
-                      Conectando con Drive...
+                      Escanenado y Cargando Drive...
                     </>
                   ) : (
                     <>
                       <CloudDownload className="w-4 h-4" />
-                      Sincronizar Desde Drive
+                      Actualizar desde Drive
                     </>
                   )}
                 </button>
@@ -2519,7 +2660,7 @@ export default function AnalisisDF14View() {
                   className="flex items-center justify-center gap-2 p-3.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-2xl text-xs font-black uppercase tracking-wider transition-all border border-slate-300 text-center"
                 >
                   <ExternalLink className="w-4 h-4 text-slate-600" />
-                  Abrir Archivo en Drive
+                  Abrir Carpeta en Drive
                 </a>
               </div>
 
@@ -2530,7 +2671,7 @@ export default function AnalisisDF14View() {
 
                 {/* Option A: Drop / Select XML File */}
                 <div className="space-y-3 mt-2">
-                  <div 
+                  <div
                     onClick={() => {
                       setShowDriveModal(false);
                       fileInputRef.current?.click();
