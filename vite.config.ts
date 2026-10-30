@@ -111,7 +111,8 @@ export default defineConfig(() => {
 
               let fileId = fileIdParam;
               let discoveredFileName = 'DF-14A_1.xml';
-              const driveFiles: { id: string; name: string; parent?: string }[] = [];
+              let driveModifiedIso = '';
+              const driveFiles: { id: string; name: string; parent?: string; modifiedTime?: string }[] = [];
 
               // Si no se proporcionó un fileId directo o es el ID de la carpeta, escaneamos dinámicamente la carpeta
               if (!fileId || fileId === targetFolderId || fileId === DEFAULT_FOLDER_ID || fileId === '1Ll1g7SmYMytc5qhmI1llL1l0tBfMqe5X') {
@@ -150,7 +151,10 @@ export default defineConfig(() => {
                         !fId.includes('Errors') &&
                         !fId.includes('Recaptcha')
                       ) {
-                        driveFiles.push({ id: fId, name: fName, parent: match[2] });
+                        const tail = decodedHtml.slice(match.index, match.index + 240);
+                        const tsMatch = tail.match(/,(1\d{12}),/);
+                        const modifiedIso = tsMatch ? new Date(Number(tsMatch[1])).toISOString() : '';
+                        driveFiles.push({ id: fId, name: fName, parent: match[2], modifiedTime: modifiedIso });
                       }
                     }
 
@@ -163,6 +167,9 @@ export default defineConfig(() => {
                       if (preferred) {
                         fileId = preferred.id;
                         discoveredFileName = preferred.name;
+                        if (preferred.modifiedTime) {
+                          driveModifiedIso = preferred.modifiedTime;
+                        }
                       }
                     }
 
@@ -207,7 +214,7 @@ export default defineConfig(() => {
               }
 
               if (!fileId || fileId === targetFolderId) {
-                fileId = '1djrV7Zb9ltfdqBt4svOdtwNpn4AYUg7E';
+                fileId = '1CBCsLRu7T0ypYrUbrCc_afkLxjnS7-kQ';
               }
 
               if (checkInfoOnly) {
@@ -218,6 +225,7 @@ export default defineConfig(() => {
                     folderId: targetFolderId,
                     fileId,
                     fileName: discoveredFileName,
+                    modifiedTime: driveModifiedIso || null,
                     filesInFolder: driveFiles,
                     timestamp: new Date().toISOString()
                   })
@@ -246,6 +254,10 @@ export default defineConfig(() => {
                     if (fnMatch && fnMatch[1]) {
                       discoveredFileName = fnMatch[1];
                     }
+                    const lastMod = dlRes.headers.get('last-modified');
+                    if (!driveModifiedIso && lastMod && !isNaN(Date.parse(lastMod))) {
+                      driveModifiedIso = new Date(lastMod).toISOString();
+                    }
                   }
                 }
               } catch (e) {
@@ -263,6 +275,10 @@ export default defineConfig(() => {
                     const text = await ucRes.text();
                     if (text && (text.includes('Workbook') || text.includes('Table') || text.includes('Row') || text.includes('<?xml'))) {
                       xmlContent = text;
+                      const lastMod = ucRes.headers.get('last-modified');
+                      if (!driveModifiedIso && lastMod && !isNaN(Date.parse(lastMod))) {
+                        driveModifiedIso = new Date(lastMod).toISOString();
+                      }
                     }
                   }
                 } catch (e) {
@@ -285,6 +301,10 @@ export default defineConfig(() => {
               res.setHeader('X-Drive-File-Id', fileId);
               res.setHeader('X-Drive-File-Name', encodeURIComponent(discoveredFileName));
               res.setHeader('X-Drive-Folder-Id', targetFolderId);
+              if (driveModifiedIso) {
+                res.setHeader('X-Drive-Modified-Time', driveModifiedIso);
+              }
+              res.setHeader('Access-Control-Expose-Headers', 'X-Drive-File-Id, X-Drive-File-Name, X-Drive-Folder-Id, X-Drive-Modified-Time');
               res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
               res.setHeader('Pragma', 'no-cache');
               res.setHeader('Expires', '0');
@@ -472,6 +492,602 @@ export default defineConfig(() => {
             } catch (e: any) {
               res.statusCode = 500;
               res.end(JSON.stringify({ error: e?.message || 'Error en proxy de Formación Complementaria Google Drive' }));
+            }
+          });
+
+          server.middlewares.use(async (req, res, next) => {
+            const rawUrl = req.originalUrl || req.url || '';
+            if (!rawUrl.includes('/api/drive-programacion-ficha')) {
+              return next();
+            }
+
+            const DEFAULT_PROG_FOLDER_ID = '1NGz4Uy5Vt-AfV2wJjHYalzn6W7DyT5ff';
+            const decodeEscapes = (str: string) =>
+              String(str || '')
+                .replace(/\\x([0-9A-Fa-f]{2})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
+                .replace(/\\u([0-9A-Fa-f]{4})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)))
+                .replace(/&amp;/g, '&')
+                .replace(/&quot;/g, '"')
+                .replace(/&#39;/g, "'");
+
+            const extractFicha = (name: string) => {
+              const clean = String(name || '').trim();
+              const mStart = clean.match(/^\s*ficha[\s._-]*(\d{4,12})(?:\D|$)/i);
+              if (mStart) return { ficha: mStart[1], startsWithFicha: true };
+              if (/^\s*ficha\b/i.test(clean)) {
+                const mAny = clean.match(/(?:^|\D)(\d{5,12})(?:\D|$)/);
+                if (mAny) return { ficha: mAny[1], startsWithFicha: true };
+              }
+              const mFallback = clean.match(/(?:^|\D)(\d{6,10})(?:\D|$)/);
+              if (mFallback) return { ficha: mFallback[1], startsWithFicha: false };
+              return { ficha: '', startsWithFicha: false };
+            };
+
+            try {
+              const urlObj = new URL(rawUrl, `http://${req.headers.host || 'localhost'}`);
+              const folderId = urlObj.searchParams.get('folderId') || DEFAULT_PROG_FOLDER_ID;
+              const action = urlObj.searchParams.get('action') || '';
+              const fichaParam = (urlObj.searchParams.get('ficha') || '').trim();
+              const fileIdParam = (urlObj.searchParams.get('fileId') || '').trim();
+              const ua =
+                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
+
+              const byId = new Map<
+                string,
+                { id: string; name: string; ficha: string; startsWithFicha: boolean; modifiedTime: string }
+              >();
+
+              try {
+                const folderRes = await fetch(
+                  `https://drive.google.com/drive/folders/${folderId}?usp=sharing&_t=${Date.now()}`,
+                  {
+                    headers: {
+                      'User-Agent': ua,
+                      Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                      'Cache-Control': 'no-cache, no-store, must-revalidate',
+                      Pragma: 'no-cache',
+                    },
+                  }
+                );
+                if (folderRes.ok) {
+                  const decoded = decodeEscapes(await folderRes.text());
+                  const fileRegex = /\["([a-zA-Z0-9_-]{25,50})",\["([^"]*)"\],"([^"]+)"/g;
+                  let match;
+                  while ((match = fileRegex.exec(decoded)) !== null) {
+                    const fId = match[1];
+                    const fName = match[3];
+                    if (
+                      fId !== folderId &&
+                      !fId.startsWith('AIza') &&
+                      !fId.startsWith('ADFN') &&
+                      !fId.startsWith('AA2Yr') &&
+                      !fId.includes('Errors') &&
+                      !fId.includes('Recaptcha')
+                    ) {
+                      const tail = decoded.slice(match.index, match.index + 260);
+                      const tsMatch = tail.match(/,(1\d{12}),/);
+                      const modifiedTime = tsMatch ? new Date(Number(tsMatch[1])).toISOString() : '';
+                      const parsed = extractFicha(fName);
+                      byId.set(fId, {
+                        id: fId,
+                        name: fName,
+                        ficha: parsed.ficha,
+                        startsWithFicha: parsed.startsWithFicha,
+                        modifiedTime,
+                      });
+                    }
+                  }
+                }
+              } catch (e) {
+                console.warn('Advertencia escaneando carpeta programación SOFIA:', e);
+              }
+
+              try {
+                const embRes = await fetch(
+                  `https://drive.google.com/embeddedfolderview?id=${folderId}#list`,
+                  { headers: { 'User-Agent': ua, 'Cache-Control': 'no-cache' } }
+                );
+                if (embRes.ok) {
+                  const embHtml = decodeEscapes(await embRes.text());
+                  const entryRegex =
+                    /id="entry-([a-zA-Z0-9_-]{20,50})"[\s\S]*?<div class="flip-entry-title">([^<]+)<\/div>/g;
+                  let m;
+                  while ((m = entryRegex.exec(embHtml)) !== null) {
+                    const fId = m[1];
+                    const fName = m[2].trim();
+                    if (fId && fId !== folderId && !byId.has(fId)) {
+                      const parsed = extractFicha(fName);
+                      byId.set(fId, {
+                        id: fId,
+                        name: fName,
+                        ficha: parsed.ficha,
+                        startsWithFicha: parsed.startsWithFicha,
+                        modifiedTime: '',
+                      });
+                    }
+                  }
+                }
+              } catch (e) {
+                console.warn('Advertencia embeddedfolderview programación SOFIA:', e);
+              }
+
+              const files = Array.from(byId.values());
+
+              if (action === 'list' || urlObj.searchParams.get('info') === 'true') {
+                res.setHeader('Content-Type', 'application/json; charset=utf-8');
+                res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+                res.end(
+                  JSON.stringify({
+                    success: true,
+                    folderId,
+                    totalFiles: files.length,
+                    files,
+                    timestamp: new Date().toISOString(),
+                  })
+                );
+                return;
+              }
+
+              let matchedFile: {
+                id: string;
+                name: string;
+                ficha: string;
+                startsWithFicha: boolean;
+                modifiedTime: string;
+              } | null = null;
+
+              if (fileIdParam) {
+                matchedFile = files.find((f) => f.id === fileIdParam) || {
+                  id: fileIdParam,
+                  name: `Ficha ${fichaParam || ''}.xls`,
+                  ficha: fichaParam,
+                  startsWithFicha: true,
+                  modifiedTime: '',
+                };
+              } else if (fichaParam) {
+                const escaped = fichaParam.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                const exactRx = new RegExp(`(?:^|\\D)${escaped}(?:\\D|$)`);
+                const strictMatches = files.filter(
+                  (f) => /^\s*ficha\b/i.test(f.name) && (f.ficha === fichaParam || exactRx.test(f.name))
+                );
+                if (strictMatches.length > 0) {
+                  matchedFile = strictMatches.sort((a, b) =>
+                    (b.modifiedTime || '').localeCompare(a.modifiedTime || '')
+                  )[0];
+                } else {
+                  const fbMatches = files.filter((f) => f.ficha === fichaParam || exactRx.test(f.name));
+                  if (fbMatches.length > 0) {
+                    matchedFile = fbMatches.sort((a, b) =>
+                      (b.modifiedTime || '').localeCompare(a.modifiedTime || '')
+                    )[0];
+                  }
+                }
+              }
+
+              if (!matchedFile) {
+                res.statusCode = 404;
+                res.setHeader('Content-Type', 'application/json; charset=utf-8');
+                res.end(
+                  JSON.stringify({
+                    found: false,
+                    ficha: fichaParam,
+                    folderId,
+                    message: `No se encontró un archivo Excel iniciado con "Ficha" para la ficha ${fichaParam} en la carpeta de Google Drive.`,
+                    availableFiles: files,
+                  })
+                );
+                return;
+              }
+
+              let arrayBuf: ArrayBuffer | null = null;
+              let dlFileName = '';
+              let dlModifiedIso = '';
+
+              try {
+                const dlRes = await fetch(
+                  `https://drive.usercontent.google.com/download?id=${matchedFile.id}&export=download&confirm=t&_t=${Date.now()}`,
+                  { headers: { 'User-Agent': ua, 'Cache-Control': 'no-cache' } }
+                );
+                if (dlRes.ok) {
+                  const ct = (dlRes.headers.get('content-type') || '').toLowerCase();
+                  const buf = await dlRes.arrayBuffer();
+                  if (buf.byteLength > 256 && !ct.includes('text/html')) {
+                    arrayBuf = buf;
+                    const cd = dlRes.headers.get('content-disposition') || '';
+                    const fnMatch = cd.match(/filename\*?=(?:UTF-8'')?"?([^";]+)"?/i);
+                    if (fnMatch && fnMatch[1]) {
+                      try {
+                        dlFileName = decodeURIComponent(fnMatch[1]);
+                      } catch {
+                        dlFileName = fnMatch[1];
+                      }
+                    }
+                    const lastMod = dlRes.headers.get('last-modified');
+                    if (lastMod && !isNaN(Date.parse(lastMod))) {
+                      dlModifiedIso = new Date(lastMod).toISOString();
+                    }
+                  }
+                }
+              } catch (e) {}
+
+              if (!arrayBuf) {
+                try {
+                  const sheetRes = await fetch(
+                    `https://docs.google.com/spreadsheets/d/${matchedFile.id}/export?format=xlsx&_t=${Date.now()}`,
+                    { headers: { 'User-Agent': ua } }
+                  );
+                  if (sheetRes.ok) {
+                    const ct = (sheetRes.headers.get('content-type') || '').toLowerCase();
+                    const buf = await sheetRes.arrayBuffer();
+                    if (buf.byteLength > 256 && !ct.includes('text/html')) {
+                      arrayBuf = buf;
+                    }
+                  }
+                } catch (e) {}
+              }
+
+              if (!arrayBuf) {
+                try {
+                  const ucRes = await fetch(
+                    `https://drive.google.com/uc?export=download&id=${matchedFile.id}&confirm=t&_t=${Date.now()}`,
+                    { headers: { 'User-Agent': ua } }
+                  );
+                  if (ucRes.ok) {
+                    const ct = (ucRes.headers.get('content-type') || '').toLowerCase();
+                    const buf = await ucRes.arrayBuffer();
+                    if (buf.byteLength > 256 && !ct.includes('text/html')) {
+                      arrayBuf = buf;
+                    }
+                  }
+                } catch (e) {}
+              }
+
+              if (!arrayBuf) {
+                res.statusCode = 502;
+                res.setHeader('Content-Type', 'application/json; charset=utf-8');
+                res.end(
+                  JSON.stringify({
+                    found: true,
+                    error: `Se identificó el archivo "${matchedFile.name}", pero no fue posible descargarlo desde Google Drive.`,
+                  })
+                );
+                return;
+              }
+
+              const finalName = matchedFile.name || dlFileName || `Ficha_${fichaParam}.xls`;
+              const finalMod = matchedFile.modifiedTime || dlModifiedIso || '';
+
+              res.setHeader('Content-Type', 'application/octet-stream');
+              res.setHeader('Content-Length', arrayBuf.byteLength.toString());
+              res.setHeader('X-Drive-File-Id', matchedFile.id);
+              res.setHeader('X-Drive-File-Name', encodeURIComponent(finalName));
+              res.setHeader('X-Drive-Folder-Id', folderId);
+              res.setHeader('X-Drive-Matched-Ficha', matchedFile.ficha || fichaParam);
+              if (finalMod) {
+                res.setHeader('X-Drive-Modified-Time', finalMod);
+              }
+              res.setHeader(
+                'Access-Control-Expose-Headers',
+                'X-Drive-File-Id, X-Drive-File-Name, X-Drive-Folder-Id, X-Drive-Matched-Ficha, X-Drive-Modified-Time'
+              );
+              res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+              res.end(Buffer.from(arrayBuf));
+            } catch (e: any) {
+              res.statusCode = 500;
+              res.setHeader('Content-Type', 'application/json; charset=utf-8');
+              res.end(
+                JSON.stringify({
+                  error: e?.message || 'Error en proxy de Programación SOFIA Plus Google Drive',
+                })
+              );
+            }
+          });
+
+          // 5. Proxy para Juicios Evaluativos del Aprendiz por Ficha (carpeta Drive con archivos Excel iniciados en "Ficha <numero>")
+          server.middlewares.use('/api/drive-juicios-ficha', async (req: any, res: any) => {
+            try {
+              const urlObj = new URL(req.url || '', `http://${req.headers.host || 'localhost'}`);
+              const folderId =
+                urlObj.searchParams.get('folderId') || '1jD0PQu1jlHKLgkngmo4Hogip3DA5g5t3';
+              const action = urlObj.searchParams.get('action') || '';
+              const fichaParam = (urlObj.searchParams.get('ficha') || '').trim();
+              const fileIdParam = (urlObj.searchParams.get('fileId') || '').trim();
+
+              const decodeEscapes = (s: string) =>
+                String(s || '')
+                  .replace(/\\x([0-9A-Fa-f]{2})/g, (_, hex) =>
+                    String.fromCharCode(parseInt(hex, 16))
+                  )
+                  .replace(/\\u([0-9A-Fa-f]{4})/g, (_, hex) =>
+                    String.fromCharCode(parseInt(hex, 16))
+                  )
+                  .replace(/&amp;/g, '&')
+                  .replace(/&quot;/g, '"')
+                  .replace(/&#39;/g, "'");
+
+              const extractFicha = (name: string) => {
+                const clean = String(name || '').trim();
+                const mStart = clean.match(/^\s*ficha[\s._-]*(\d{4,12})(?:\D|$)/i);
+                if (mStart) return { ficha: mStart[1], startsWithFicha: true };
+                if (/^\s*ficha\b/i.test(clean)) {
+                  const mAny = clean.match(/(?:^|\D)(\d{5,12})(?:\D|$)/);
+                  if (mAny) return { ficha: mAny[1], startsWithFicha: true };
+                }
+                const mFallback = clean.match(/(?:^|\D)(\d{6,10})(?:\D|$)/);
+                if (mFallback) return { ficha: mFallback[1], startsWithFicha: false };
+                return { ficha: '', startsWithFicha: false };
+              };
+
+              const ua =
+                'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
+              const byId = new Map<
+                string,
+                {
+                  id: string;
+                  name: string;
+                  ficha: string;
+                  startsWithFicha: boolean;
+                  modifiedTime: string;
+                }
+              >();
+
+              try {
+                const folderUrl = `https://drive.google.com/drive/folders/${folderId}?usp=sharing&_t=${Date.now()}`;
+                const fRes = await fetch(folderUrl, {
+                  headers: {
+                    'User-Agent': ua,
+                    Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                    'Cache-Control': 'no-cache, no-store, must-revalidate',
+                    Pragma: 'no-cache',
+                  },
+                });
+                if (fRes.ok) {
+                  const decoded = decodeEscapes(await fRes.text());
+                  const fileRegex = /\["([a-zA-Z0-9_-]{25,50})",\["([^"]*)"\],"([^"]+)"/g;
+                  let m;
+                  while ((m = fileRegex.exec(decoded)) !== null) {
+                    const fId = m[1];
+                    const fName = m[3];
+                    if (
+                      fId !== folderId &&
+                      !fId.startsWith('AIza') &&
+                      !fId.startsWith('ADFN') &&
+                      !fId.startsWith('AA2Yr') &&
+                      !fId.includes('Errors') &&
+                      !fId.includes('Recaptcha')
+                    ) {
+                      const tail = decoded.slice(m.index, m.index + 260);
+                      const tsMatch = tail.match(/,(1\d{12}),/);
+                      const modifiedTime = tsMatch
+                        ? new Date(Number(tsMatch[1])).toISOString()
+                        : '';
+                      const parsed = extractFicha(fName);
+                      byId.set(fId, {
+                        id: fId,
+                        name: fName,
+                        ficha: parsed.ficha,
+                        startsWithFicha: parsed.startsWithFicha,
+                        modifiedTime,
+                      });
+                    }
+                  }
+                }
+              } catch (err) {
+                console.warn('Advertencia leyendo carpeta principal Drive juicios evaluativos:', err);
+              }
+
+              try {
+                const embUrl = `https://drive.google.com/embeddedfolderview?id=${folderId}#list`;
+                const embRes = await fetch(embUrl, {
+                  headers: {
+                    'User-Agent': ua,
+                    'Cache-Control': 'no-cache, no-store, must-revalidate',
+                  },
+                });
+                if (embRes.ok) {
+                  const embHtml = decodeEscapes(await embRes.text());
+                  const entryRegex =
+                    /id="entry-([a-zA-Z0-9_-]{20,50})"[\s\S]*?<div class="flip-entry-title">([^<]+)<\/div>/g;
+                  let em;
+                  while ((em = entryRegex.exec(embHtml)) !== null) {
+                    const fId = em[1];
+                    const fName = em[2].trim();
+                    if (fId && fId !== folderId && !byId.has(fId)) {
+                      const parsed = extractFicha(fName);
+                      byId.set(fId, {
+                        id: fId,
+                        name: fName,
+                        ficha: parsed.ficha,
+                        startsWithFicha: parsed.startsWithFicha,
+                        modifiedTime: '',
+                      });
+                    }
+                  }
+                }
+              } catch (err) {
+                console.warn('Advertencia leyendo embeddedfolderview Drive juicios evaluativos:', err);
+              }
+
+              const files = Array.from(byId.values());
+
+              if (action === 'list' || urlObj.searchParams.get('info') === 'true') {
+                res.setHeader('Content-Type', 'application/json; charset=utf-8');
+                res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+                res.end(
+                  JSON.stringify({
+                    success: true,
+                    folderId,
+                    totalFiles: files.length,
+                    files,
+                    timestamp: new Date().toISOString(),
+                  })
+                );
+                return;
+              }
+
+              let matchedFile: {
+                id: string;
+                name: string;
+                ficha: string;
+                startsWithFicha: boolean;
+                modifiedTime: string;
+              } | null = null;
+
+              if (fileIdParam) {
+                matchedFile = files.find((f) => f.id === fileIdParam) || {
+                  id: fileIdParam,
+                  name: `Ficha ${fichaParam || ''}.xls`,
+                  ficha: fichaParam,
+                  startsWithFicha: true,
+                  modifiedTime: '',
+                };
+              } else if (fichaParam) {
+                const escaped = fichaParam.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                const exactRx = new RegExp(`(?:^|\\D)${escaped}(?:\\D|$)`);
+                const strict = files.filter(
+                  (f) =>
+                    /^\s*ficha\b/i.test(f.name) &&
+                    (f.ficha === fichaParam || exactRx.test(f.name))
+                );
+                if (strict.length > 0) {
+                  matchedFile = strict.sort((a, b) =>
+                    (b.modifiedTime || '').localeCompare(a.modifiedTime || '')
+                  )[0];
+                } else {
+                  const loose = files.filter(
+                    (f) => f.ficha === fichaParam || exactRx.test(f.name)
+                  );
+                  if (loose.length > 0) {
+                    matchedFile = loose.sort((a, b) =>
+                      (b.modifiedTime || '').localeCompare(a.modifiedTime || '')
+                    )[0];
+                  }
+                }
+              }
+
+              if (!matchedFile) {
+                res.statusCode = 404;
+                res.setHeader('Content-Type', 'application/json; charset=utf-8');
+                res.end(
+                  JSON.stringify({
+                    found: false,
+                    ficha: fichaParam,
+                    folderId,
+                    message: `No se encontró un archivo Excel iniciado con "Ficha" para la ficha ${fichaParam} en la carpeta de Juicios Evaluativos de Google Drive.`,
+                    availableFiles: files,
+                  })
+                );
+                return;
+              }
+
+              let arrayBuf: ArrayBuffer | null = null;
+              let dlName = '';
+              let dlModIso = '';
+
+              try {
+                const dlUrl = `https://drive.usercontent.google.com/download?id=${matchedFile.id}&export=download&confirm=t&_t=${Date.now()}`;
+                const dlRes = await fetch(dlUrl, {
+                  headers: {
+                    'User-Agent': ua,
+                    'Cache-Control': 'no-cache, no-store, must-revalidate',
+                    Pragma: 'no-cache',
+                  },
+                });
+                if (dlRes.ok) {
+                  const ct = (dlRes.headers.get('content-type') || '').toLowerCase();
+                  const buf = await dlRes.arrayBuffer();
+                  if (buf.byteLength > 256 && !ct.includes('text/html')) {
+                    arrayBuf = buf;
+                    const cd = dlRes.headers.get('content-disposition') || '';
+                    const fnMatch = cd.match(/filename\*?=(?:UTF-8'')?"?([^";]+)"?/i);
+                    if (fnMatch && fnMatch[1]) {
+                      try {
+                        dlName = decodeURIComponent(fnMatch[1]);
+                      } catch {
+                        dlName = fnMatch[1];
+                      }
+                    }
+                    const lm = dlRes.headers.get('last-modified');
+                    if (lm && !isNaN(Date.parse(lm))) {
+                      dlModIso = new Date(lm).toISOString();
+                    }
+                  }
+                }
+              } catch (err) {
+                console.warn('Fallo descarga 1 juicios drive.usercontent:', err);
+              }
+
+              if (!arrayBuf) {
+                try {
+                  const gsUrl = `https://docs.google.com/spreadsheets/d/${matchedFile.id}/export?format=xlsx&_t=${Date.now()}`;
+                  const gsRes = await fetch(gsUrl, { headers: { 'User-Agent': ua } });
+                  if (gsRes.ok) {
+                    const ct = (gsRes.headers.get('content-type') || '').toLowerCase();
+                    const buf = await gsRes.arrayBuffer();
+                    if (buf.byteLength > 256 && !ct.includes('text/html')) {
+                      arrayBuf = buf;
+                    }
+                  }
+                } catch (err) {
+                  console.warn('Fallo descarga 2 juicios google sheets export:', err);
+                }
+              }
+
+              if (!arrayBuf) {
+                try {
+                  const ucUrl = `https://drive.google.com/uc?export=download&id=${matchedFile.id}&confirm=t&_t=${Date.now()}`;
+                  const ucRes = await fetch(ucUrl, { headers: { 'User-Agent': ua } });
+                  if (ucRes.ok) {
+                    const ct = (ucRes.headers.get('content-type') || '').toLowerCase();
+                    const buf = await ucRes.arrayBuffer();
+                    if (buf.byteLength > 256 && !ct.includes('text/html')) {
+                      arrayBuf = buf;
+                    }
+                  }
+                } catch (err) {
+                  console.warn('Fallo descarga 3 juicios drive uc:', err);
+                }
+              }
+
+              if (!arrayBuf) {
+                res.statusCode = 502;
+                res.setHeader('Content-Type', 'application/json; charset=utf-8');
+                res.end(
+                  JSON.stringify({
+                    found: true,
+                    error: `Se identificó el archivo "${matchedFile.name}", pero no fue posible descargarlo desde Google Drive.`,
+                    matchedFile,
+                  })
+                );
+                return;
+              }
+
+              const finalName = matchedFile.name || dlName || `Ficha_${fichaParam}_Juicios.xls`;
+              const finalMod = matchedFile.modifiedTime || dlModIso || '';
+
+              res.setHeader('Content-Type', 'application/octet-stream');
+              res.setHeader('Content-Length', arrayBuf.byteLength.toString());
+              res.setHeader('X-Drive-File-Id', matchedFile.id);
+              res.setHeader('X-Drive-File-Name', encodeURIComponent(finalName));
+              res.setHeader('X-Drive-Folder-Id', folderId);
+              res.setHeader('X-Drive-Matched-Ficha', matchedFile.ficha || fichaParam);
+              if (finalMod) {
+                res.setHeader('X-Drive-Modified-Time', finalMod);
+              }
+              res.setHeader(
+                'Access-Control-Expose-Headers',
+                'X-Drive-File-Id, X-Drive-File-Name, X-Drive-Folder-Id, X-Drive-Matched-Ficha, X-Drive-Modified-Time'
+              );
+              res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+              res.end(Buffer.from(arrayBuf));
+            } catch (e: any) {
+              res.statusCode = 500;
+              res.setHeader('Content-Type', 'application/json; charset=utf-8');
+              res.end(
+                JSON.stringify({
+                  error: e?.message || 'Error en proxy de Juicios Evaluativos Google Drive',
+                })
+              );
             }
           });
         }

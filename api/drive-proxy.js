@@ -17,6 +17,7 @@ export default async function handler(req, res) {
 
     let fileId = fileIdParam;
     let discoveredFileName = 'DF-14A_1.xml';
+    let driveModifiedIso = '';
     let driveFiles = [];
 
     // Si no se proporcionó un fileId directo, o si el fileId recibido es el ID de la carpeta, escaneamos dinámicamente la carpeta
@@ -59,7 +60,10 @@ export default async function handler(req, res) {
               !fId.includes('Errors') &&
               !fId.includes('Recaptcha')
             ) {
-              driveFiles.push({ id: fId, name: fName, parent: match[2] });
+              const tail = decodedHtml.slice(match.index, match.index + 240);
+              const tsMatch = tail.match(/,(1\d{12}),/);
+              const modifiedIso = tsMatch ? new Date(Number(tsMatch[1])).toISOString() : '';
+              driveFiles.push({ id: fId, name: fName, parent: match[2], modifiedTime: modifiedIso });
             }
           }
 
@@ -73,6 +77,9 @@ export default async function handler(req, res) {
             if (preferred) {
               fileId = preferred.id;
               discoveredFileName = preferred.name;
+              if (preferred.modifiedTime) {
+                driveModifiedIso = preferred.modifiedTime;
+              }
             }
           }
 
@@ -119,7 +126,7 @@ export default async function handler(req, res) {
 
     // Fallback si por alguna razón Google Drive bloquea el HTML
     if (!fileId || fileId === targetFolderId) {
-      fileId = '1djrV7Zb9ltfdqBt4svOdtwNpn4AYUg7E'; // ID del archivo DF-14A_1.xml verificado en la carpeta
+      fileId = '1CBCsLRu7T0ypYrUbrCc_afkLxjnS7-kQ'; // ID del archivo DF-14A_1.xml verificado en la carpeta
     }
 
     // Si sólo se pidió información del archivo detectado
@@ -131,6 +138,7 @@ export default async function handler(req, res) {
           folderId: targetFolderId,
           fileId,
           fileName: discoveredFileName,
+          modifiedTime: driveModifiedIso || null,
           filesInFolder: driveFiles,
           timestamp: new Date().toISOString()
         })
@@ -160,6 +168,10 @@ export default async function handler(req, res) {
           if (fnMatch && fnMatch[1]) {
             discoveredFileName = fnMatch[1];
           }
+          const lastMod = dlRes.headers.get('last-modified');
+          if (!driveModifiedIso && lastMod && !isNaN(Date.parse(lastMod))) {
+            driveModifiedIso = new Date(lastMod).toISOString();
+          }
         }
       }
     } catch (e) {
@@ -177,6 +189,10 @@ export default async function handler(req, res) {
           const text = await ucRes.text();
           if (text && (text.includes('Workbook') || text.includes('Table') || text.includes('Row') || text.includes('<?xml'))) {
             xmlContent = text;
+            const lastMod = ucRes.headers.get('last-modified');
+            if (!driveModifiedIso && lastMod && !isNaN(Date.parse(lastMod))) {
+              driveModifiedIso = new Date(lastMod).toISOString();
+            }
           }
         }
       } catch (e) {
@@ -199,6 +215,10 @@ export default async function handler(req, res) {
     res.setHeader('X-Drive-File-Id', fileId);
     res.setHeader('X-Drive-File-Name', encodeURIComponent(discoveredFileName));
     res.setHeader('X-Drive-Folder-Id', targetFolderId);
+    if (driveModifiedIso) {
+      res.setHeader('X-Drive-Modified-Time', driveModifiedIso);
+    }
+    res.setHeader('Access-Control-Expose-Headers', 'X-Drive-File-Id, X-Drive-File-Name, X-Drive-Folder-Id, X-Drive-Modified-Time');
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0');
     res.setHeader('Pragma', 'no-cache');
     res.setHeader('Expires', '0');

@@ -76,9 +76,10 @@ test_df14.xml
 .env*.local
 !.env.example
 
-# Vercel local configuration
+# Archivos locales y copias de respaldo
 .vercel/
-
-# Archivos locales / copias de respaldo
 assets/
-src/data/inasistenciasSampleData.ts.bak
+*.bak
+.env
+.env.*
+!.env.example

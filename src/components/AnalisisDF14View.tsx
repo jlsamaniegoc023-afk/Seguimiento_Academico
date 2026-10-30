@@ -464,7 +464,7 @@ export default function AnalisisDF14View() {
   // Google Drive Sync State
   const DEFAULT_DRIVE_FOLDER_URL = 'https://drive.google.com/drive/folders/1khmfgzE-GFmlWZvtGlaBXfoyh8LJgiTK?usp=sharing';
   const DEFAULT_FOLDER_ID = '1khmfgzE-GFmlWZvtGlaBXfoyh8LJgiTK';
-  const DEFAULT_FILE_ID = '1djrV7Zb9ltfdqBt4svOdtwNpn4AYUg7E';
+  const DEFAULT_FILE_ID = '1CBCsLRu7T0ypYrUbrCc_afkLxjnS7-kQ';
   const [showDriveModal, setShowDriveModal] = useState<boolean>(false);
   const [driveUrl, setDriveUrl] = useState<string>(() => {
     return sessionStorage.getItem('sena_df14_drive_url') || DEFAULT_DRIVE_FOLDER_URL;
@@ -503,7 +503,7 @@ export default function AnalisisDF14View() {
   const parseXMLText = (
     xmlString: string,
     fileName: string,
-    options: { silent?: boolean; isDriveSync?: boolean } = {}
+    options: { silent?: boolean; isDriveSync?: boolean; customUpdatedAt?: string } = {}
   ) => {
     try {
       const parser = new DOMParser();
@@ -753,7 +753,9 @@ export default function AnalisisDF14View() {
       }
 
       const now = new Date();
-      const formattedDate = `${now.toLocaleDateString('es-CO')} ${now.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}`;
+      const formattedDate =
+        options.customUpdatedAt ||
+        `${now.toLocaleDateString('es-CO')} ${now.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}`;
 
       setFichasData(extractedFichas);
       setLastUpdated(formattedDate);
@@ -781,11 +783,22 @@ export default function AnalisisDF14View() {
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       const file = e.target.files[0];
+      const fileModDate = file.lastModified
+        ? new Intl.DateTimeFormat('es-CO', {
+            timeZone: 'America/Bogota',
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: true
+          }).format(new Date(file.lastModified))
+        : undefined;
       const reader = new FileReader();
       reader.onload = (event) => {
         const text = event.target?.result as string;
         if (text) {
-          parseXMLText(text, file.name);
+          parseXMLText(text, file.name, { customUpdatedAt: fileModDate });
         }
       };
       reader.readAsText(file);
@@ -821,6 +834,7 @@ export default function AnalisisDF14View() {
       let loadedXmlText = '';
       let discoveredName = detectedDriveFileName || 'DF-14A_1.xml';
       let discoveredId = detectedDriveFileId || DEFAULT_FILE_ID;
+      let discoveredModifiedTime = '';
 
       // Método 1: Proxy de API local con escaneo dinámico de la carpeta en Google Drive
       try {
@@ -839,6 +853,8 @@ export default function AnalisisDF14View() {
             if (headerName) discoveredName = decodeURIComponent(headerName);
             const headerId = proxyRes.headers.get('X-Drive-File-Id');
             if (headerId) discoveredId = headerId;
+            const headerMod = proxyRes.headers.get('X-Drive-Modified-Time');
+            if (headerMod) discoveredModifiedTime = headerMod;
           }
         }
       } catch (e) {
@@ -888,12 +904,26 @@ export default function AnalisisDF14View() {
         sessionStorage.setItem('sena_df14_detected_file_name', discoveredName);
         sessionStorage.setItem('sena_df14_detected_file_id', discoveredId);
 
-        parseXMLText(loadedXmlText, discoveredName, { silent: true, isDriveSync: true });
-        const now = new Date();
-        const formattedDate = `${now.toLocaleDateString('es-CO')} ${now.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}`;
+        let formattedDate = '';
+        if (discoveredModifiedTime && !isNaN(Date.parse(discoveredModifiedTime))) {
+          formattedDate = new Intl.DateTimeFormat('es-CO', {
+            timeZone: 'America/Bogota',
+            day: '2-digit',
+            month: '2-digit',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: true
+          }).format(new Date(discoveredModifiedTime));
+        } else {
+          const now = new Date();
+          formattedDate = `${now.toLocaleDateString('es-CO')} ${now.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit' })}`;
+        }
+
+        parseXMLText(loadedXmlText, discoveredName, { silent: true, isDriveSync: true, customUpdatedAt: formattedDate });
         setLastDriveSync(formattedDate);
         sessionStorage.setItem('sena_df14_last_drive_sync', formattedDate);
-        setDriveSyncSuccess(`¡Sincronización exitosa! Se cargó y analizó el archivo "${discoveredName}" subido en la carpeta de Google Drive.`);
+        setDriveSyncSuccess(`¡Sincronización exitosa! Archivo "${discoveredName}" modificado en Drive el ${formattedDate}.`);
       } else {
         throw new Error('No se pudo obtener el archivo XML desde la carpeta compartida de Google Drive.');
       }
